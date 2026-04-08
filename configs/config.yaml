@@ -43,6 +43,23 @@ knowledge_base:
   docs_path: "./docs/sop"
   reload_interval: 1h
 
+# 历史文档配置
+history:
+  enable: true
+  storage_path: "./docs/history"
+  max_records: 1000
+  similarity_threshold: 0.8
+  document_format: "markdown"
+
+# 修复工作流配置
+remediation_workflow:
+  enable_history_learning: true
+  auto_generate_docs: true
+  max_execution_steps: 20
+  step_timeout: 5m
+  retry_failed_steps: true
+  max_retries_per_step: 3
+
 # 上下文管理配置
 context:
   max_tokens: 8000

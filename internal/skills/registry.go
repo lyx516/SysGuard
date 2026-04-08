@@ -10,6 +10,7 @@ import (
 	"github.com/sysguard/sysguard/internal/skills/metrics"
 	"github.com/sysguard/sysguard/internal/skills/network_diagnosis"
 	"github.com/sysguard/sysguard/internal/skills/notification"
+	"github.com/sysguard/sysguard/internal/skills/remediation_workflow"
 	"github.com/sysguard/sysguard/internal/skills/service_management"
 )
 
@@ -29,7 +30,24 @@ func NewDefaultRegistry() *SkillRegistry {
 	registry.Register(file_operations.NewFileOperationsSkill())
 	registry.Register(notification.NewNotificationSkill())
 
+	// 注意：RemediationWorkflowSkill 需要在 Coordinator 中动态注册，
+	// 因为它依赖于 HistoryKnowledgeBase 和 SOP KnowledgeBase
+
 	return registry
+}
+
+// RegisterWorkflowSkill 注册工作流 Skill
+func RegisterWorkflowSkill(
+	registry *SkillRegistry,
+	historyKB interface{},
+	sopKB *rag.KnowledgeBase,
+) error {
+	workflowSkill := remediation_workflow.NewRemediationWorkflowSkill(
+		historyKB,
+		sopKB,
+		registry,
+	)
+	return registry.Register(workflowSkill)
 }
 
 // GetSkillNames 获取所有 Skill 名称
