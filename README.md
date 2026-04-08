@@ -8,6 +8,26 @@
 ## 项目背景
 基于 Go 语言 Eino 框架构建的智能运维助手，集成实时监控、故障自愈与大日志分析能力。
 
+## 最新动态 ✨
+
+### v0.2.0 - Skills Framework Release 🚀
+
+基于主流 AI Skills 平台（LangChain、OpenAI、CrewAI、AutoGen、LlamaIndex）设计的完整技能框架，提供 10 个生产级运维自动化能力。
+
+**新增 10 个核心 Skills**:
+- 📊 日志分析 - 大文件分块、关键词过滤、模式匹配
+- 🏥 健康检查 - 全面系统监控（CPU、内存、磁盘、网络、服务）
+- 🔧 服务管理 - systemd 服务全生命周期管理
+- 🚨 告警通知 - 多渠道告警（邮件、Slack、Webhook）
+- 📈 指标收集 - Prometheus 集成、实时/历史指标
+- 🌐 网络诊断 - 连通性、延迟、带宽、DNS 测试
+- 🐳 容器管理 - Docker 和 Kubernetes 管理
+- 💾 数据库操作 - MySQL、PostgreSQL、Redis、MongoDB
+- 📁 文件操作 - 安全的文件读写、搜索、管理
+- 💬 通知服务 - 邮件、Slack、SMS、Telegram、Discord
+
+详细文档请查看: [SKILLS.md](docs/SKILLS.md)
+
 ## 核心功能
 
 ### 1. 双智能体协同
@@ -67,6 +87,19 @@ SysGuard/
 │   └── observability/      # 可观测性
 │       ├── trace.go        # 追踪
 │       └── callback.go     # 回调管理
+│   └── skills/             # Skills 框架
+│       ├── skill.go        # Skill/Tool 接口定义
+│       ├── registry.go     # Skill 注册表
+│       ├── log_analysis/   # 日志分析 Skill
+│       ├── health_check/   # 健康检查 Skill
+│       ├── service_management/  # 服务管理 Skill
+│       ├── alerting/       # 告警 Skill
+│       ├── metrics/        # 指标收集 Skill
+│       ├── network_diagnosis/  # 网络诊断 Skill
+│       ├── container_management/  # 容器管理 Skill
+│       ├── database_operations/  # 数据库操作 Skill
+│       ├── file_operations/  # 文件操作 Skill
+│       └── notification/   # 通知 Skill
 ├── pkg/                    # 公共包
 │   ├── middleware/         # 中间件
 │   │   ├── error.go        # 错误处理
@@ -88,3 +121,7 @@ SysGuard/
 2. **生产安全机制**: 多层防护确保运维安全
 3. **智能日志处理**: 优化大文件处理和上下文管理
 4. **全链路可观测**: 完整的操作追踪和审计
+5. **Skills 框架**: 基于 LangChain/OpenAI/CrewAI/AutoGen/LlamaIndex 设计的生产级技能系统
+   - 10 个核心 Skills 覆盖主要运维场景
+   - 50+ 专用工具支持
+   - 可扩展的注册表和发现机制
