@@ -1,0 +1,70 @@
+# SysGuard Configuration
+
+# 监控配置
+monitor:
+  check_interval: 30s
+  health_threshold: 80.0
+
+# 日志分析配置
+log_analysis:
+  chunk_size: 1000
+  keywords:
+    - error
+    - failed
+    - warning
+    - critical
+    - exception
+    - timeout
+
+# Agent 配置
+agents:
+  inspector:
+    interval: 30s
+  remediator:
+    auto_approve_safe_commands: true
+    max_retries: 3
+
+# 安全配置
+security:
+  dangerous_commands:
+    - rm
+    - kill
+    - killall
+    - dd
+    - mkfs
+    - shutdown
+    - reboot
+
+  enable_approval: true
+  approval_timeout: 5m
+
+# 知识库配置
+knowledge_base:
+  docs_path: "./docs/sop"
+  reload_interval: 1h
+
+# 上下文管理配置
+context:
+  max_tokens: 8000
+  summary_threshold: 7000
+  keep_recent_messages: 5
+
+# 可观测性配置
+observability:
+  enable_tracing: true
+  trace_log_path: "./logs/trace.log"
+  enable_probes: true
+
+# 容错配置
+fault_tolerance:
+  enable_retry: true
+  max_retry_attempts: 3
+  retry_delay: 1s
+  enable_circuit_breaker: true
+  circuit_breaker_threshold: 5
+
+# 日志配置
+logging:
+  level: info
+  format: json
+  output: ./logs/sysguard.log
