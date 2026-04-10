@@ -1,725 +1,341 @@
-# SysGuard - 智能自动化运维与诊断 Agent
+# SysGuard
+
+智能自动化运维与诊断 Agent，面向“持续巡检 -> 异常发现 -> 安全修复 -> 历史沉淀”这条闭环。
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8)
-![Status](https://img.shields.io/badge/status-stable-success)
+![Status](https://img.shields.io/badge/status-production--ready-success)
 
-基于 Go 语言构建的智能运维助手，集成实时监控、故障自愈与大日志分析能力
-
-[快速开始](#快速开始) • [功能特性](#核心功能) • [架构设计](#架构设计) • [配置说明](#配置说明)
+[快速开始](#快速开始) • [运行机制](#运行机制) • [配置说明](#配置说明) • [部署建议](#部署建议)
 
 </div>
 
----
+## 项目简介
 
-## 📋 项目信息
+SysGuard 是一个用 Go 编写的运维守护进程。它会定期检查主机和受管服务的健康状态，当检测到异常时：
 
-- **项目名称**: SysGuard
-- **版本**: v0.1.0
-- **时间周期**: 2026.01 - 至今
-- **开发模式**: 独立设计开发
-- **技术栈**: Go 1.21+、Eino、RAG、Shell
-- **许可证**: MIT License
+1. 生成结构化异常信息。
+2. 从本地 SOP 知识库中检索相关修复文档。
+3. 优先复用历史成功修复方案。
+4. 按安全规则执行修复命令。
+5. 记录 trace 和历史修复结果，供后续复用与审计。
 
-## 🌟 项目简介
+当前版本已经实现了可运行的生产主链路，而不只是概念原型。
 
-SysGuard 是一个基于 Go 语言构建的智能运维助手，采用双智能体架构，集成实时监控、故障自愈与大日志分析能力。系统通过 RAG（检索增强生成）技术从运维知识库中检索相关信息，结合历史记录学习能力，实现智能化的运维问题诊断与自动修复。
+## 当前能力
 
-### 核心优势
+- 双 Agent 协同：
+  `Inspector` 负责定时巡检，`Remediator` 负责修复，`Coordinator` 负责调度。
+- 真实健康检查：
+  支持 CPU、内存、磁盘、网络和受管服务状态检查，不再使用固定模拟数据。
+- SOP/RAG 检索：
+  从 `docs/sop` 目录加载 Markdown 运维文档，并基于关键词召回相关 SOP。
+- 历史知识库：
+  成功修复会写入本地历史记录，后续相似故障优先复用历史步骤。
+- 安全执行：
+  危险命令拦截、交互式人工审批、审批超时自动拒绝。
+- 可观测性：
+  trace 事件和运行日志落盘，便于审计和排障。
+- 优雅停止：
+  支持 `SIGINT` / `SIGTERM`，可安全关闭巡检和修复流程。
 
-- 🤖 **双智能体协同**: Inspector 负责监控巡检，Remediator 负责故障修复
-- 🛡️ **多层安全防护**: 高危命令拦截、人工审批流程、容错机制
-- 📚 **知识驱动**: 基于 RAG 的知识检索，强制遵循 SOP 标准
-- 🧠 **学习能力**: 历史记录学习，持续优化修复策略
-- 🔍 **全链路可观测**: 完整的操作追踪与审计日志
+## 运行机制
 
-## 🚀 快速开始
+### 核心流程
+
+```text
+Inspector 定时巡检
+    ->
+Monitor 生成健康报告
+    ->
+发现异常后通知 Coordinator
+    ->
+Remediator 检索 SOP / 历史记录
+    ->
+生成修复计划
+    ->
+危险命令审批
+    ->
+执行修复
+    ->
+写入 trace 与历史记录
+```
+
+### 主要模块
+
+```text
+cmd/sysguard/main.go                 启动入口
+internal/config                      配置加载
+internal/monitor                     健康检查与异常构建
+internal/agents/inspector            巡检 Agent
+internal/agents/remediator           修复 Agent
+internal/agents/coordinator          调度器
+internal/rag/knowledge.go            SOP 知识库
+internal/rag/history.go              历史修复记录
+internal/security/interceptor.go     危险命令拦截
+internal/observability/trace.go      trace 事件落盘
+pkg/utils/shell.go                   Shell 执行器
+```
+
+## 快速开始
 
 ### 前置要求
 
-- **Go**: 1.21 或更高版本
-- **Docker**: (可选) 用于容器化部署
-- **LLM API**: OpenAI API 密钥或兼容的 LLM 服务
+- Go 1.21+
+- Linux 或 macOS
+- 可访问受管主机本地命令环境
+- 如果要进行服务级修复：
+  Linux 上建议有 `systemctl` 和 `journalctl`
 
-### 安装步骤
-
-#### 1. 克隆仓库
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/lyx516/SysGuard.git
 cd SysGuard
 ```
 
-#### 2. 安装依赖
+### 2. 下载依赖
 
 ```bash
 go mod download
 ```
 
-#### 3. 配置环境
+### 3. 配置 SysGuard
 
-编辑 `configs/config.yaml` 配置文件：
+编辑 [configs/config.yaml](/Users/liyuxuan/Desktop/SysGuard/configs/config.yaml)。
+
+最小可用示例：
 
 ```yaml
-# 监控配置
 monitor:
   check_interval: 30s
-  health_threshold: 80.0
+  health_threshold: 80
+  cpu_threshold: 85
+  memory_threshold: 90
+  disk_threshold: 90
 
-# 安全配置
+agents:
+  inspector:
+    interval: 30s
+  remediator:
+    command_timeout: 2m
+    auto_approve_safe_commands: true
+    allow_interactive_input: true
+
 security:
   dangerous_commands:
     - rm
     - kill
-    - killall
-  enable_approval: true
-  approval_timeout: 5m
-```
-
-#### 4. 启动服务
-
-```bash
-# 构建项目
-make build
-
-# 运行 SysGuard
-./bin/sysguard
-```
-
-#### 5. Docker 部署 (可选)
-
-```bash
-# 构建镜像
-docker build -t sysguard:latest .
-
-# 运行容器
-docker run -d \
-  --name sysguard \
-  -v $(pwd)/configs:/app/configs \
-  -v $(pwd)/logs:/app/logs \
-  sysguard:latest
-```
-
-## 🏗️ 项目结构
-
-```
-SysGuard/
-├── cmd/                    # 命令行入口
-│   └── sysguard/
-│       └── main.go         # 主程序入口
-├── internal/               # 内部模块
-│   ├── agents/             # Agent 实现
-│   │   ├── inspector/      # 巡检员 Agent
-│   │   ├── remediator/     # 修复员 Agent
-│   │   └── coordinator/    # 协调器
-│   ├── rag/                # RAG 模块
-│   │   ├── knowledge.go    # 知识库
-│   │   └── history.go     # 历史记录管理
-│   ├── security/           # 安全模块
-│   │   ├── interceptor.go  # 命令拦截器
-│   │   └── approval.go     # 审批流程
-│   ├── workflow/           # 工作流
-│   │   ├── graph.go        # 日志分析图
-│   │   ├── chunks.go       # 分块处理
-│   │   └── filter.go       # 关键词过滤
-│   ├── monitor/            # 监控模块
-│   │   ├── health.go       # 健康检查
-│   │   └── logger.go       # 日志记录
-│   ├── skills/             # Skills 框架
-│   │   ├── registry.go     # 技能注册表
-│   │   └── remediation_workflow.go  # 修复工作流
-│   ├── context/            # 上下文管理
-│   │   ├── summary.go      # 递归摘要
-│   │   └── manager.go      # 上下文管理器
-│   └── observability/      # 可观测性
-│       ├── trace.go        # 追踪
-│       └── callback.go     # 回调管理
-├── pkg/                    # 公共包
-│   ├── middleware/         # 中间件
-│   │   ├── error.go        # 错误处理
-│   │   └── recovery.go     # 容错
-│   └── utils/              # 工具函数
-│       └── shell.go        # Shell 工具
-├── configs/                # 配置文件
-│   └── config.yaml
-├── docs/                   # 运维手册
-│   ├── sop/                # SOP 文档
-│   │   └── example-sop.md
-│   └── history/            # 历史记录
-├── logs/                   # 日志输出
-├── go.mod
-└── go.sum
-```
-
-## 🎯 核心功能
-
-### 1. 双智能体协同
-
-#### Inspector (巡检员)
-- **职责**: 实时系统监控与健康检查
-- **功能**:
-  - 高频健康度检查 (默认30秒间隔)
-  - 结构化日志输出与分析
-  - 异常检测与告警
-  - 系统状态探针管理
-- **特点**: 轻量级、高频率、低侵入
-
-#### Remediator (修复员)
-- **职责**: 异常修复与问题解决
-- **功能**:
-  - 基于异常自动唤醒
-  - 三步修复流程：分析→执行→文档化
-  - 历史学习与智能决策
-  - 节点维护与部署
-- **特点**: 智能化、安全优先、可学习
-
-#### Coordinator (协调器)
-- **职责**: 智能体之间的协调管理
-- **功能**:
-  - 异常回调处理
-  - 智能体生命周期管理
-  - 工作流调度
-  - 状态同步
-
-### 2. 安全防御与容错机制
-
-#### 安全层次
-```
-┌─────────────────────────────────────┐
-│   人工审批流程 (Human Approval)     │
-├─────────────────────────────────────┤
-│   高危命令拦截 (Command Interceptor)│
-├─────────────────────────────────────┤
-│   容错中间件 (Fault Tolerance)      │
-├─────────────────────────────────────┤
-│   Agent 自我纠错 (Self-Correction) │
-└─────────────────────────────────────┘
-```
-
-**安全特性**:
-- **高危命令拦截器**: 自动识别并拦截 `rm`、`kill`、`killall`、`dd`、`mkfs` 等危险命令
-- **人工审批流程**: 强制关键操作需人工审批，支持超时自动拒绝
-- **容错中间件**: 自动捕获工具执行错误，支持自动重试和熔断
-- **Agent 自我纠错**: 通过反馈机制保障生产环境安全
-
-### 3. 三步修复流程
-
-#### Step 1: 问题分析 (Problem Analysis)
-```go
-analysis := &ProblemAnalysis{
-    ProblemType:  "ServiceFailure",
-    Description:  "Web service not responding",
-    RootCause:    "Process crash detected",
-    Severity:     "high",
-    Environment:  "Production",
-}
-
-// 调用 skills 进行深度分析
-healthCheck := registry.Execute("health-check", input)
-logAnalysis := registry.Execute("log-analysis", input)
-metricsAnalysis := registry.Execute("metrics-collection", input)
-```
-
-#### Step 2: 计划执行 (Plan Execution)
-```go
-// 搜索历史相似问题
-similarRecords := historyKB.SearchSimilarRecords(description, 0.8)
-
-// 如果有历史记录，复用成功方案
-if len(similarRecords) > 0 {
-    plan := adaptFromHistory(similarRecords[0])
-    executePlan(plan)
-} else {
-    // 使用默认修复策略
-    plan := createDefaultRemediationPlan()
-    executePlan(plan)
-}
-```
-
-#### Step 3: 文档生成 (Documentation)
-```go
-// 首次处理问题，生成文档
-if len(similarRecords) == 0 && result.Success {
-    record := &HistoryRecord{
-        ProblemType:  problemType,
-        Description:  description,
-        RootCause:    rootCause,
-        Solution:     solution,
-        Steps:        executedSteps,
-        Success:      true,
-        Timestamp:    time.Now(),
-    }
-    historyKB.AddRecord(record)
-}
-```
-
-### 4. Skills 框架
-
-SysGuard 提供了10个生产级别的 Skills，涵盖运维主要场景：
-
-| Skill | 功能描述 | 用途 |
-|-------|---------|------|
-| **SystemMonitoring** | 实时系统健康检查 | CPU、内存、磁盘、网络监控 |
-| **LogAnalysis** | 智能日志解析分析 | 日志关键词过滤、异常检测 |
-| **ContainerManagement** | Docker容器操作 | 容器启停、状态查询 |
-| **ServiceManagement** | 服务生命周期管理 | 服务启停、重启、状态监控 |
-| **MetricsCollection** | 性能指标收集 | 时序数据收集与分析 |
-| **AlertEvaluation** | 告警规则评估 | 阈值检测、告警触发 |
-| **HealthCheck** | 综合健康诊断 | 端到端健康检查 |
-| **RestartService** | 服务重启能力 | 优雅重启服务 |
-| **CleanResources** | 资源清理操作 | 临时文件、缓存清理 |
-| **ExecuteShell** | 安全Shell执行 | 安全命令执行框架 |
-
-### 5. 上下文管理与可观测性
-
-#### 递归摘要机制
-```
-Long Conversation (10000+ tokens)
-    ↓
-Recursive Summary (500 tokens)
-    ↓
-Compressed Context + Latest Messages
-```
-
-**优势**:
-- 降低 Token 消耗
-- 保留关键信息
-- 提升响应速度
-
-#### 全局回调追踪
-```go
-callbackID := obs.OnCallbackStarted("Remediator.remediate")
-// ... 执行操作
-obs.OnCallbackCompleted(callbackID, result)
-```
-
-**追踪内容**:
-- 探针下发与回收
-- 工具调用链路
-- 异常发生时间点
-- 性能指标统计
-
-## 🏛️ 架构设计
-
-### 系统架构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    SysGuard System                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐         ┌──────────────┐               │
-│  │  Inspector   │         │  Remediator  │               │
-│  │  (巡检员)    │         │  (修复员)    │               │
-│  └──────┬───────┘         └──────┬───────┘               │
-│         │                         │                         │
-│         │   Anomaly              │                         │
-│         │◄──────────────────────│                         │
-│         │                         │                         │
-│         ▼                         ▼                         │
-│  ┌─────────────────────────────────────────┐               │
-│  │         Coordinator (协调器)           │               │
-│  └──────────────┬──────────────────────┘               │
-│                 │                                      │
-└─────────────────┼──────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Core Components                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐│
-│  │Skills Registry│  │History Knowledge│ │RAG Knowledge ││
-│  │  (技能注册)  │  │Base (历史记录) │ │Base (SOP)   ││
-│  └──────────────┘  └──────────────┘  └──────────────┘│
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐│
-│  │   Security   │  │   Monitor    │  │Observability ││
-│  │  (安全模块)  │  │  (监控模块)  │  │  (可观测性)  ││
-│  └──────────────┘  └──────────────┘  └──────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 数据流图
-
-```
-┌─────────┐
-│Monitor  │ 定期检查
-└────┬────┘
-     │
-     ▼
-┌─────────┐
-│Inspector│ 检测异常
-└────┬────┘
-     │
-     ▼
-┌─────────────┐
-│Coordinator  │ 触发修复
-└────┬────────┘
-     │
-     ▼
-┌───────────────────────┐
-│   Remediator         │
-│ ┌─────────────────┐   │
-│ │1. Problem Analysis│   │
-│ │  - Health Check  │   │
-│ │  - Log Analysis │   │
-│ │  - Metrics      │   │
-│ └────────┬────────┘   │
-│          ▼            │
-│ ┌─────────────────┐   │
-│ │2. Plan Execution│   │
-│ │  - Search History│   │
-│ │  - Execute Plan │   │
-│ │  - Safety Check │   │
-│ └────────┬────────┘   │
-│          ▼            │
-│ ┌─────────────────┐   │
-│ │3. Documentation│   │
-│ │  - Record Issue │   │
-│ │  - Save Solution│   │
-│ └────────┬────────┘   │
-└──────────┼────────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │  History KB  │ 学习记录
-    └──────────────┘
-```
-
-## ⚙️ 配置说明
-
-### 完整配置文件示例
-
-```yaml
-# SysGuard Configuration
-
-# 监控配置
-monitor:
-  check_interval: 30s           # 检查间隔
-  health_threshold: 80.0        # 健康度阈值
-  probe_timeout: 10s            # 探针超时时间
-
-# 日志分析配置
-log_analysis:
-  chunk_size: 1000             # 分块大小
-  keywords:                     # 关键词过滤
-    - error
-    - failed
-    - warning
-    - critical
-    - exception
-    - timeout
-  max_file_size: 100MB         # 最大文件大小
-
-# Agent 配置
-agents:
-  inspector:
-    interval: 30s              # 巡检间隔
-    max_retries: 3              # 最大重试次数
-    timeout: 5m                 # 超时时间
-
-  remediator:
-    auto_approve_safe_commands: true  # 自动审批安全命令
-    max_retries: 3                    # 最大重试次数
-    step_timeout: 5m                  # 单步超时
-    enable_history_learning: true       # 启用历史学习
-
-# 安全配置
-security:
-  dangerous_commands:         # 高危命令列表
-    - rm
-    - kill
-    - killall
     - dd
-    - mkfs
     - shutdown
     - reboot
+    - systemctl stop
+  enable_approval: true
+  approval_timeout: 5m
 
-  enable_approval: true       # 启用审批
-  approval_timeout: 5m        # 审批超时
-  enable_interceptor: true    # 启用命令拦截
-
-# 知识库配置
 knowledge_base:
-  docs_path: "./docs/sop"      # SOP 文档路径
-  reload_interval: 1h          # 重载间隔
-  similarity_threshold: 0.8     # 相似度阈值
+  docs_path: "./docs/sop"
 
-  history:
-    enable: true               # 启用历史记录
-    storage_path: "./docs/history"
-    max_records: 1000          # 最大记录数
-
-# 上下文管理配置
-context:
-  max_tokens: 8000            # 最大 Token 数
-  summary_threshold: 7000     # 摘要阈值
-  keep_recent_messages: 5      # 保留最近消息数
-
-# 可观测性配置
 observability:
-  enable_tracing: true         # 启用追踪
+  enable_tracing: true
   trace_log_path: "./logs/trace.log"
-  enable_probes: true          # 启用探针
-  metrics_interval: 1m         # 指标采集间隔
 
-# 容错配置
-fault_tolerance:
-  enable_retry: true           # 启用重试
-  max_retry_attempts: 3        # 最大重试次数
-  retry_delay: 1s             # 重试延迟
-  enable_circuit_breaker: true  # 启用熔断器
-  circuit_breaker_threshold: 5  # 熔断阈值
+storage:
+  history_path: "./data/history.json"
 
-# 日志配置
 logging:
-  level: info                 # 日志级别: debug, info, warn, error
-  format: json               # 日志格式: json, text
-  output: ./logs/sysguard.log
-  rotation:
-    max_size: 100MB
-    max_age: 30d
-    max_backups: 10
+  output: "./logs/sysguard.log"
+
+services:
+  names:
+    - nginx
+    - redis
 ```
 
-### 环境变量
+说明：
+
+- `services.names` 为空时，不做受管服务检查。
+- Linux 上检测到服务异常时，会优先尝试 `journalctl` + `systemctl restart` 的修复流程。
+- macOS 上默认只做进程存在性检测，不自动执行服务重启。
+
+### 4. 构建
 
 ```bash
-# LLM API 配置
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-
-# 数据库配置 (可选)
-export DATABASE_URL="postgresql://user:pass@localhost:5432/sysguard"
-
-# Redis 配置 (可选)
-export REDIS_URL="redis://localhost:6379"
-export REDIS_PASSWORD=""
-
-# 日志配置
-export LOG_LEVEL="info"
-export LOG_OUTPUT="./logs/sysguard.log"
+go build -o build/sysguard ./cmd/sysguard
 ```
 
-## 📝 使用示例
+### 5. 运行
 
-### 1. 基本监控
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-
-    "github.com/sysguard/sysguard/internal/monitor"
-    "github.com/sysguard/sysguard/internal/observability"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // 创建监控器
-    monitor := monitor.NewMonitor()
-
-    // 注册健康检查
-    monitor.RegisterHealthCheck("web-service", func() error {
-        // 检查 Web 服务状态
-        return checkWebService()
-    })
-
-    monitor.RegisterHealthCheck("database", func() error {
-        // 检查数据库状态
-        return checkDatabase()
-    })
-
-    // 启动监控
-    if err := monitor.Start(ctx); err != nil {
-        log.Fatal(err)
-    }
-
-    // 等待异常
-    anomaly := <-monitor.AnomalyChannel()
-    log.Printf("Anomaly detected: %v", anomaly)
-}
+```bash
+./build/sysguard
 ```
 
-### 2. 自定义 Skill
+启动后，SysGuard 会：
 
-```go
-package main
+- 周期性输出健康检查日志。
+- 把结构化 trace 写入 `logs/trace.log`。
+- 把运行日志写入 `logs/sysguard.log`。
+- 把历史修复记录写入 `data/history.json`。
 
-import (
-    "context"
-    "fmt"
-    "log"
+## 配置说明
 
-    "github.com/sysguard/sysguard/internal/skills"
-)
+### `monitor`
 
-// CustomSkill 自定义技能
-type CustomSkill struct {
-    name string
-}
+- `check_interval`:
+  巡检周期。
+- `health_threshold`:
+  总体健康分低于该阈值时触发异常。
+- `cpu_threshold`:
+  CPU 使用率阈值。
+- `memory_threshold`:
+  内存使用率阈值。
+- `disk_threshold`:
+  磁盘使用率阈值。
 
-func (s *CustomSkill) Name() string {
-    return s.name
-}
+### `agents.inspector`
 
-func (s *CustomSkill) Description() string {
-    return "Custom skill for specific operations"
-}
+- `interval`:
+  巡检 Agent 的执行周期，通常与 `monitor.check_interval` 保持一致。
 
-func (s *CustomSkill) Execute(ctx context.Context, input *skills.SkillInput) (*skills.SkillOutput, error) {
-    // 执行自定义逻辑
-    result := performCustomOperation(input.Params)
+### `agents.remediator`
 
-    return &skills.SkillOutput{
-        Success: true,
-        Result:  result,
-    }, nil
-}
+- `command_timeout`:
+  单条修复命令的执行超时。
+- `auto_approve_safe_commands`:
+  当前保留字段，安全命令默认直接执行。
+- `allow_interactive_input`:
+  是否允许在终端内进行审批确认。
 
-func main() {
-    registry := skills.NewSkillRegistry()
+### `security`
 
-    // 注册自定义技能
-    customSkill := &CustomSkill{name: "custom-operation"}
-    if err := registry.Register(customSkill); err != nil {
-        log.Fatal(err)
-    }
+- `dangerous_commands`:
+  需要人工审批的危险命令前缀列表。
+- `enable_approval`:
+  是否启用审批。
+- `approval_timeout`:
+  审批等待超时。
 
-    // 执行技能
-    output, err := registry.Execute(ctx, "custom-operation", &skills.SkillInput{
-        Params: map[string]interface{}{
-            "param1": "value1",
-        },
-    })
+### `knowledge_base`
 
-    if err != nil {
-        log.Fatal(err)
-    }
+- `docs_path`:
+  SOP 文档目录，支持递归加载 `.md` 文件。
 
-    fmt.Printf("Result: %v", output.Result)
-}
+### `observability`
+
+- `enable_tracing`:
+  是否写 trace 事件。
+- `trace_log_path`:
+  trace 输出文件，JSON Lines 格式。
+
+### `storage`
+
+- `history_path`:
+  历史修复记录存储位置。
+
+### `logging`
+
+- `output`:
+  运行日志文件路径。
+
+### `services`
+
+- `names`:
+  受管服务名列表。
+  Linux 使用 `systemctl is-active` 检查，失败时回退到 `pgrep -x`。
+
+## 知识库与修复策略
+
+### SOP 文档
+
+SOP 目录默认是 [docs/sop/example-sop.md](/Users/liyuxuan/Desktop/SysGuard/docs/sop/example-sop.md) 这一类 Markdown 文档。
+
+推荐写法：
+
+- 使用清晰标题描述问题类型。
+- 用代码块列出可执行命令。
+- 对命令中的变量使用 `<service_name>`、`<port>` 这类占位符。
+
+SysGuard 会从代码块中抽取命令，并尝试用异常元数据替换占位符。
+
+### 历史复用
+
+当新异常与历史记录描述足够相似时，SysGuard 会优先复用历史成功步骤，而不是重新从 SOP 推导。
+
+这意味着：
+
+- 你的修复流程会随着运行次数逐步沉淀。
+- 首次故障修复成功后，后续同类问题恢复速度会更快。
+
+## 安全模型
+
+SysGuard 默认不是“无条件自动执行器”，而是“带护栏的自动修复器”。
+
+安全机制包括：
+
+- 危险命令前缀拦截。
+- 审批超时自动拒绝。
+- 无交互终端时拒绝需要审批的操作。
+- 命令解析时过滤 `|`、`;`、`&`、重定向等高风险字符。
+- 审计日志和 trace 落盘。
+
+建议：
+
+- 先在测试环境验证 SOP。
+- 只把必要命令加入知识库。
+- 谨慎维护 `dangerous_commands` 列表。
+
+## 验证状态
+
+当前仓库已验证：
+
+```bash
+go build ./...
+go test ./...
 ```
 
-### 3. 添加自定义 SOP
+并补充了以下基础测试：
 
-在 `docs/sop/` 目录下创建 Markdown 文件：
+- 配置解析测试
+- 历史记录持久化测试
+- 危险命令识别测试
 
-```markdown
-# Web 服务故障处理
+## Docker
 
-## 问题识别
-- Web 服务无响应
-- HTTP 5xx 错误率 > 5%
-- 响应时间 > 5s
+仓库包含 [Dockerfile](/Users/liyuxuan/Desktop/SysGuard/Dockerfile)，可用于容器化构建：
 
-## 分析步骤
-1. 检查服务进程状态
-2. 查看应用日志
-3. 检查资源使用情况
-4. 检查依赖服务状态
-
-## 修复步骤
-1. 如果进程停止，重启服务
-2. 如果资源不足，扩容或优化
-3. 如果依赖服务故障，联系相关团队
-4. 监控修复效果
-
-## 验证步骤
-1. 检查服务健康状态
-2. 验证正常请求响应
-3. 检查错误率是否下降
+```bash
+docker build -t sysguard:latest .
+docker run --rm -it sysguard:latest
 ```
 
-## 🐛 故障排除
+注意：
 
-### 常见问题
+- 容器模式下是否能检查宿主服务，取决于挂载和权限设计。
+- 如果要让 SysGuard 管理宿主机服务，通常更适合直接部署为主机守护进程，而不是默认容器模式。
 
-#### 1. Inspector 检测不到异常
+## 部署建议
 
-**可能原因**:
-- 检查间隔设置过长
-- 健康检查逻辑不正确
-- 权限不足
+生产环境更推荐：
 
-**解决方案**:
-```yaml
-monitor:
-  check_interval: 10s  # 减小检查间隔
-  health_threshold: 70.0  # 降低阈值
-```
+1. 以 systemd 或类似进程管理器运行。
+2. 将 `configs/`、`docs/sop/`、`logs/`、`data/` 放到持久化目录。
+3. 将审批终端接入值班环境，避免高危命令因无交互输入而被自动拒绝。
+4. 先从少量明确的受管服务开始接入，不要一开始就覆盖整台机器。
 
-#### 2. Remediator 修复失败
+## 局限与后续方向
 
-**可能原因**:
-- 技能未正确注册
-- 命令被拦截
-- 审批超时
+当前版本已经可用，但仍有明确边界：
 
-**解决方案**:
-```yaml
-remediator:
-  auto_approve_safe_commands: false  # 手动审批
-  max_retries: 5  # 增加重试次数
-```
+- 还没有 HTTP API 或 Web 控制台。
+- 还没有外部告警通道集成。
+- 还没有分布式多节点调度能力。
+- 当前 RAG 仍是本地关键词召回，不是向量检索。
 
-#### 3. 内存占用过高
+这些能力适合作为下一阶段演进。
 
-**可能原因**:
-- 历史记录过多
-- 日志文件过大
-- 上下文未及时清理
+## License
 
-**解决方案**:
-```yaml
-knowledge_base:
-  history:
-    max_records: 500  # 减少历史记录数
-
-context:
-  max_tokens: 5000  # 减少最大 Token 数
-```
-
-## 📊 性能指标
-
-| 指标 | 说明 | 目标值 |
-|------|------|--------|
-| Inspector 延迟 | 异常检测延迟 | < 1s |
-| Remediator 响应时间 | 修复响应时间 | < 30s |
-| 历史检索准确率 | 相似问题检索准确率 | > 85% |
-| 命令拦截率 | 高危命令拦截成功率 | 100% |
-| Token 消耗 | 平均对话 Token 消耗 | < 8000 |
-
-## 🤝 贡献指南
-
-欢迎贡献代码、文档、问题报告！
-
-- 查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解贡献流程
-- 遵循 MIT License 协议
-- 代码风格遵循 Go 标准
-
-## 📜 许可证
-
-本项目采用 MIT License 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 📞 联系方式
-
-- **GitHub Issues**: [提交问题](https://github.com/lyx516/SysGuard/issues)
-- **Email**: support@sysguard.dev
-- **Discussions**: [参与讨论](https://github.com/lyx516/SysGuard/discussions)
-
----
-
-<div align="center">
-
-**如果觉得项目有用，请给个 Star ⭐**
-
-Made with ❤️ by SysGuard Team
-
-</div>
+MIT
