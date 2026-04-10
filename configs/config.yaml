@@ -4,6 +4,9 @@
 monitor:
   check_interval: 30s
   health_threshold: 80.0
+  cpu_threshold: 85.0
+  memory_threshold: 90.0
+  disk_threshold: 90.0
 
 # 日志分析配置
 log_analysis:
@@ -22,6 +25,8 @@ agents:
     interval: 30s
   remediator:
     auto_approve_safe_commands: true
+    command_timeout: 2m
+    allow_interactive_input: true
     max_retries: 3
 
 # 安全配置
@@ -43,6 +48,13 @@ knowledge_base:
   docs_path: "./docs/sop"
   reload_interval: 1h
 
+# 受管服务
+services:
+  # 例如:
+  # names:
+  #   - nginx
+  #   - redis
+
 # 上下文管理配置
 context:
   max_tokens: 8000
@@ -54,6 +66,10 @@ observability:
   enable_tracing: true
   trace_log_path: "./logs/trace.log"
   enable_probes: true
+
+# 存储配置
+storage:
+  history_path: "./data/history.json"
 
 # 容错配置
 fault_tolerance:

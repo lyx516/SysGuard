@@ -1,0 +1,293 @@
+package config
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type Config struct {
+	Monitor       MonitorConfig
+	Agents        AgentsConfig
+	Security      SecurityConfig
+	KnowledgeBase KnowledgeBaseConfig
+	Observability ObservabilityConfig
+	Storage       StorageConfig
+	Services      []string
+}
+
+type MonitorConfig struct {
+	CheckInterval   time.Duration
+	HealthThreshold float64
+	CPUThreshold    float64
+	MemoryThreshold float64
+	DiskThreshold   float64
+}
+
+type AgentsConfig struct {
+	Inspector  InspectorConfig
+	Remediator RemediatorConfig
+}
+
+type InspectorConfig struct {
+	Interval time.Duration
+}
+
+type RemediatorConfig struct {
+	CommandTimeout        time.Duration
+	AutoApproveSafe       bool
+	AllowInteractiveInput bool
+}
+
+type SecurityConfig struct {
+	DangerousCommands []string
+	EnableApproval    bool
+	ApprovalTimeout   time.Duration
+}
+
+type KnowledgeBaseConfig struct {
+	DocsPath string
+}
+
+type ObservabilityConfig struct {
+	EnableTracing bool
+	TraceLogPath  string
+}
+
+type StorageConfig struct {
+	HistoryPath string
+	LogPath     string
+}
+
+type pathEntry struct {
+	indent int
+	key    string
+}
+
+func Default() *Config {
+	return &Config{
+		Monitor: MonitorConfig{
+			CheckInterval:   30 * time.Second,
+			HealthThreshold: 80,
+			CPUThreshold:    85,
+			MemoryThreshold: 90,
+			DiskThreshold:   90,
+		},
+		Agents: AgentsConfig{
+			Inspector: InspectorConfig{
+				Interval: 30 * time.Second,
+			},
+			Remediator: RemediatorConfig{
+				CommandTimeout:        2 * time.Minute,
+				AutoApproveSafe:       true,
+				AllowInteractiveInput: true,
+			},
+		},
+		Security: SecurityConfig{
+			DangerousCommands: []string{"rm", "kill", "killall", "dd", "mkfs", "shutdown", "reboot", "launchctl unload", "systemctl stop"},
+			EnableApproval:    true,
+			ApprovalTimeout:   5 * time.Minute,
+		},
+		KnowledgeBase: KnowledgeBaseConfig{
+			DocsPath: "./docs/sop",
+		},
+		Observability: ObservabilityConfig{
+			EnableTracing: true,
+			TraceLogPath:  "./logs/trace.log",
+		},
+		Storage: StorageConfig{
+			HistoryPath: "./data/history.json",
+			LogPath:     "./logs/sysguard.log",
+		},
+	}
+}
+
+func Load(path string) (*Config, error) {
+	cfg := Default()
+	if path == "" {
+		applyEnv(cfg)
+		return cfg, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			applyEnv(cfg)
+			return cfg, nil
+		}
+		return nil, err
+	}
+	defer file.Close()
+
+	var stack []pathEntry
+	lists := make(map[string][]string)
+	values := make(map[string]string)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), " \t")
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") {
+			if len(stack) == 0 {
+				continue
+			}
+			pathKey := joinPath(stack)
+			lists[pathKey] = append(lists[pathKey], strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+			continue
+		}
+
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		for len(stack) > 0 && stack[len(stack)-1].indent >= indent {
+			stack = stack[:len(stack)-1]
+		}
+
+		if value == "" {
+			stack = append(stack, pathEntry{indent: indent, key: key})
+			continue
+		}
+
+		pathParts := make([]pathEntry, 0, len(stack)+1)
+		pathParts = append(pathParts, stack...)
+		pathParts = append(pathParts, pathEntry{key: key})
+		values[joinPath(pathParts)] = strings.Trim(value, `"'`)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	if v := values["monitor.check_interval"]; v != "" {
+		cfg.Monitor.CheckInterval = parseDuration(v, cfg.Monitor.CheckInterval)
+	}
+	if v := values["monitor.health_threshold"]; v != "" {
+		cfg.Monitor.HealthThreshold = parseFloat(v, cfg.Monitor.HealthThreshold)
+	}
+	if v := values["monitor.cpu_threshold"]; v != "" {
+		cfg.Monitor.CPUThreshold = parseFloat(v, cfg.Monitor.CPUThreshold)
+	}
+	if v := values["monitor.memory_threshold"]; v != "" {
+		cfg.Monitor.MemoryThreshold = parseFloat(v, cfg.Monitor.MemoryThreshold)
+	}
+	if v := values["monitor.disk_threshold"]; v != "" {
+		cfg.Monitor.DiskThreshold = parseFloat(v, cfg.Monitor.DiskThreshold)
+	}
+	if v := values["agents.inspector.interval"]; v != "" {
+		cfg.Agents.Inspector.Interval = parseDuration(v, cfg.Agents.Inspector.Interval)
+	}
+	if v := values["agents.remediator.command_timeout"]; v != "" {
+		cfg.Agents.Remediator.CommandTimeout = parseDuration(v, cfg.Agents.Remediator.CommandTimeout)
+	}
+	if v := values["agents.remediator.auto_approve_safe_commands"]; v != "" {
+		cfg.Agents.Remediator.AutoApproveSafe = parseBool(v, cfg.Agents.Remediator.AutoApproveSafe)
+	}
+	if v := values["agents.remediator.allow_interactive_input"]; v != "" {
+		cfg.Agents.Remediator.AllowInteractiveInput = parseBool(v, cfg.Agents.Remediator.AllowInteractiveInput)
+	}
+	if v := values["security.enable_approval"]; v != "" {
+		cfg.Security.EnableApproval = parseBool(v, cfg.Security.EnableApproval)
+	}
+	if v := values["security.approval_timeout"]; v != "" {
+		cfg.Security.ApprovalTimeout = parseDuration(v, cfg.Security.ApprovalTimeout)
+	}
+	if v := values["knowledge_base.docs_path"]; v != "" {
+		cfg.KnowledgeBase.DocsPath = v
+	}
+	if v := values["observability.enable_tracing"]; v != "" {
+		cfg.Observability.EnableTracing = parseBool(v, cfg.Observability.EnableTracing)
+	}
+	if v := values["observability.trace_log_path"]; v != "" {
+		cfg.Observability.TraceLogPath = v
+	}
+	if v := values["storage.history_path"]; v != "" {
+		cfg.Storage.HistoryPath = v
+	}
+	if v := values["logging.output"]; v != "" {
+		cfg.Storage.LogPath = v
+	}
+
+	if cmds := lists["security.dangerous_commands"]; len(cmds) > 0 {
+		cfg.Security.DangerousCommands = cmds
+	}
+	if services := lists["services.names"]; len(services) > 0 {
+		cfg.Services = services
+	}
+
+	applyEnv(cfg)
+	normalizePaths(cfg)
+	return cfg, nil
+}
+
+func joinPath(stack []pathEntry) string {
+	parts := make([]string, 0, len(stack))
+	for _, item := range stack {
+		parts = append(parts, item.key)
+	}
+	return strings.Join(parts, ".")
+}
+
+func parseDuration(v string, fallback time.Duration) time.Duration {
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
+}
+
+func parseFloat(v string, fallback float64) float64 {
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
+}
+
+func parseBool(v string, fallback bool) bool {
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
+}
+
+func applyEnv(cfg *Config) {
+	if services := strings.TrimSpace(os.Getenv("SYSGUARD_SERVICES")); services != "" {
+		parts := strings.Split(services, ",")
+		cfg.Services = cfg.Services[:0]
+		for _, part := range parts {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				cfg.Services = append(cfg.Services, trimmed)
+			}
+		}
+	}
+}
+
+func normalizePaths(cfg *Config) {
+	cfg.KnowledgeBase.DocsPath = absPath(cfg.KnowledgeBase.DocsPath)
+	cfg.Observability.TraceLogPath = absPath(cfg.Observability.TraceLogPath)
+	cfg.Storage.HistoryPath = absPath(cfg.Storage.HistoryPath)
+	cfg.Storage.LogPath = absPath(cfg.Storage.LogPath)
+}
+
+func absPath(value string) string {
+	if value == "" || filepath.IsAbs(value) {
+		return value
+	}
+	absolute, err := filepath.Abs(value)
+	if err != nil {
+		return value
+	}
+	return filepath.Clean(absolute)
+}

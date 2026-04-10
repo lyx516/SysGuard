@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -95,8 +96,21 @@ func (kb *KnowledgeBase) Retrieve(ctx context.Context, query string) ([]string, 
 	}
 
 	// 返回最相关的文档
-	results := make([]string, 0, len(scores))
-	for id := range scores {
+	type scoredDoc struct {
+		id    string
+		score int
+	}
+	ranked := make([]scoredDoc, 0, len(scores))
+	for id, score := range scores {
+		ranked = append(ranked, scoredDoc{id: id, score: score})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		return ranked[i].score > ranked[j].score
+	})
+
+	results := make([]string, 0, len(ranked))
+	for _, item := range ranked {
+		id := item.id
 		if doc, ok := kb.documents[id]; ok {
 			results = append(results, doc.Content)
 		}

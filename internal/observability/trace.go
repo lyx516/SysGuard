@@ -1,7 +1,11 @@
 package observability
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,6 +15,8 @@ type GlobalCallback struct {
 	mu          sync.RWMutex
 	callbacks   map[string]*CallbackRecord
 	probeStates map[string]ProbeState
+	enableTrace bool
+	traceLogPath string
 }
 
 // CallbackRecord 回调记录
@@ -32,10 +38,18 @@ type ProbeState struct {
 }
 
 // NewGlobalCallback 创建新的全局回调追踪器
-func NewGlobalCallback() (*GlobalCallback, error) {
+func NewGlobalCallback(enableTrace bool, traceLogPath string) (*GlobalCallback, error) {
+	if enableTrace && traceLogPath != "" {
+		if err := os.MkdirAll(filepath.Dir(traceLogPath), 0o755); err != nil {
+			return nil, err
+		}
+	}
+
 	return &GlobalCallback{
 		callbacks:   make(map[string]*CallbackRecord),
 		probeStates: make(map[string]ProbeState),
+		enableTrace: enableTrace,
+		traceLogPath: traceLogPath,
 	}, nil
 }
 
@@ -52,6 +66,10 @@ func (gc *GlobalCallback) OnCallbackStarted(name string) string {
 		Status:    "started",
 		Data:      make(map[string]interface{}),
 	}
+	gc.writeEvent("callback_started", map[string]interface{}{
+		"id":   id,
+		"name": name,
+	})
 
 	return id
 }
@@ -70,6 +88,10 @@ func (gc *GlobalCallback) OnCallbackCompleted(id string, data map[string]interfa
 			}
 		}
 	}
+	gc.writeEvent("callback_completed", map[string]interface{}{
+		"id":   id,
+		"data": data,
+	})
 }
 
 // OnCallbackError 回调错误
@@ -82,6 +104,10 @@ func (gc *GlobalCallback) OnCallbackError(id string, err error) {
 		record.Status = "error"
 		record.Error = err
 	}
+	gc.writeEvent("callback_error", map[string]interface{}{
+		"id":    id,
+		"error": err.Error(),
+	})
 }
 
 // OnProbeDeployed 探针部署
@@ -95,6 +121,10 @@ func (gc *GlobalCallback) OnProbeDeployed(name, location string) {
 		Timestamp: time.Now(),
 		Location:  location,
 	}
+	gc.writeEvent("probe_deployed", map[string]interface{}{
+		"name":     name,
+		"location": location,
+	})
 }
 
 // OnProbeReturned 探针回收
@@ -107,6 +137,9 @@ func (gc *GlobalCallback) OnProbeReturned(name string) {
 		state.Timestamp = time.Now()
 		gc.probeStates[name] = state
 	}
+	gc.writeEvent("probe_returned", map[string]interface{}{
+		"name": name,
+	})
 }
 
 // GetCallback 获取回调记录
@@ -205,4 +238,28 @@ func (gc *GlobalCallback) Reset() {
 
 	gc.callbacks = make(map[string]*CallbackRecord)
 	gc.probeStates = make(map[string]ProbeState)
+}
+
+func (gc *GlobalCallback) writeEvent(kind string, payload map[string]interface{}) {
+	if !gc.enableTrace || gc.traceLogPath == "" {
+		return
+	}
+
+	entry := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"type":      kind,
+		"payload":   payload,
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+
+	file, err := os.OpenFile(gc.traceLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	_, _ = file.Write(append(data, '\n'))
 }
