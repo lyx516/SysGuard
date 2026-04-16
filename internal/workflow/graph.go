@@ -10,8 +10,8 @@ import (
 
 // LogAnalysisGraph 日志分析工作流图
 type LogAnalysisGraph struct {
-	chunkSize   int // 分块大小（行数）
-	keywords    []string
+	chunkSize int // 分块大小（行数）
+	keywords  []string
 }
 
 // NewLogAnalysisGraph 创建新的日志分析图
@@ -44,10 +44,11 @@ func (g *LogAnalysisGraph) Analyze(ctx context.Context, filePath string) (*Analy
 
 		if len(filtered) > 0 {
 			result.Chunks = append(result.Chunks, &LogChunk{
-				Index:   chunkIndex,
-				Lines:   filtered,
-				Count:   len(filtered),
+				Index: chunkIndex,
+				Lines: filtered,
+				Count: len(filtered),
 			})
+			result.Total += len(filtered)
 		}
 
 		chunk, err = g.readChunk(file)
