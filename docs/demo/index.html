@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SysGuard GitHub Pages Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --ink: #171717;
+      --muted: #60646c;
+      --line: #d9dde3;
+      --panel: #ffffff;
+      --panel-soft: #f1f4f4;
+      --good: #12805c;
+      --warn: #9a6700;
+      --bad: #c62828;
+      --accent: #007a7a;
+      --accent-2: #5d6b2f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      padding: 24px 30px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 25px; font-weight: 760; }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    h3 { font-size: 15px; margin-bottom: 4px; }
+    button, select, input {
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 10px;
+      font: inherit;
+    }
+    button {
+      border-color: #0a6f6f;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 650;
+    }
+    button.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    main {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      gap: 18px;
+      padding: 18px 30px 40px;
+    }
+    nav {
+      position: sticky;
+      top: 104px;
+      display: grid;
+      gap: 8px;
+      align-self: start;
+    }
+    nav button {
+      width: 100%;
+      text-align: left;
+      background: #fff;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    nav button.active {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+    .status-line { color: var(--muted); margin-top: 4px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; justify-content: flex-end; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .view { display: none; }
+    .view.active { display: grid; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .metric {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 84px;
+    }
+    .metric strong { font-size: 31px; line-height: 1; }
+    .muted { color: var(--muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      padding: 2px 7px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .healthy, .completed, .resolved { color: var(--good); background: #e9f7f1; border-color: #b8e2d1; }
+    .running, .warning, .degraded { color: var(--warn); background: #fff7df; border-color: #ead589; }
+    .error, .critical, .down { color: var(--bad); background: #fdebec; border-color: #f1b9bd; }
+    .standby, .info, .started, .sop, .skill { color: #4a4f58; background: #f0f2f5; border-color: #d7dbe1; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .toolbar input { min-width: 240px; flex: 1; }
+    .list { display: grid; gap: 10px; }
+    .row {
+      display: grid;
+      gap: 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+      cursor: pointer;
+    }
+    .row:first-child { border-top: 0; padding-top: 0; }
+    .row:hover { background: var(--panel-soft); outline: 8px solid var(--panel-soft); }
+    .row-head {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: start;
+    }
+    .agent-row {
+      grid-template-columns: 150px 1fr auto;
+      align-items: center;
+    }
+    .story-row {
+      display: grid;
+      grid-template-columns: 96px 150px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border-top: 1px solid var(--line);
+      padding: 9px 7px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+    th { color: var(--muted); font-size: 12px; font-weight: 740; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: var(--panel-soft); }
+    .bar {
+      width: 100%;
+      height: 10px;
+      background: #eef0f3;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .bar span { display: block; height: 100%; background: var(--accent); }
+    .pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f4f5f6;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 380px;
+      overflow: auto;
+    }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 130px 86px 1fr;
+      gap: 9px;
+      border-top: 1px solid var(--line);
+      padding-top: 9px;
+      min-width: 0;
+    }
+    .timeline-row:first-child { border-top: 0; padding-top: 0; }
+    .drawer {
+      position: fixed;
+      right: 0;
+      top: 0;
+      width: min(760px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      box-shadow: -12px 0 28px rgba(0,0,0,.12);
+      transform: translateX(105%);
+      transition: transform .18s ease;
+      z-index: 10;
+      padding: 18px;
+      overflow: auto;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: start;
+      margin-bottom: 14px;
+    }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.18);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease;
+      z-index: 9;
+    }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+    @media (max-width: 1040px) {
+      header { grid-template-columns: 1fr; }
+      main { grid-template-columns: 1fr; }
+      nav { position: static; display: flex; flex-wrap: wrap; }
+      nav button { width: auto; }
+      .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+      .agent-row, .story-row, .timeline-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>SysGuard 静态演示看板</h1>
+      <p class="status-line" id="connection">GitHub Pages demo mode: 读取预置模拟事故数据。</p>
+    </div>
+    <div class="actions">
+      <button id="open-incident">查看事故摘要</button>
+      <button id="open-json" class="secondary">查看原始 JSON</button>
+      <a href="../../README.md"><button class="secondary">返回项目说明</button></a>
+    </div>
+  </header>
+
+  <main>
+    <nav>
+      <button class="nav active" data-view="overview">总览</button>
+      <button class="nav" data-view="story-view">调用过程</button>
+      <button class="nav" data-view="agents-view">Agent</button>
+      <button class="nav" data-view="tools-view">工具调用</button>
+      <button class="nav" data-view="docs-view">SOP/技能</button>
+      <button class="nav" data-view="logs-view">日志</button>
+      <button class="nav" data-view="history-view">修复历史</button>
+    </nav>
+
+    <div>
+      <div id="overview" class="grid view active">
+        <section class="span-3 metric"><div><p class="muted">事故状态</p><strong id="incident-status">--</strong></div><span id="incident-severity" class="pill">--</span></section>
+        <section class="span-3 metric"><div><p class="muted">健康分</p><strong id="score">--</strong></div><span id="health-pill" class="pill">--</span></section>
+        <section class="span-3 metric"><div><p class="muted">工具调用</p><strong id="tool-count">--</strong></div><span id="tool-errors" class="pill">--</span></section>
+        <section class="span-3 metric"><div><p class="muted">文档证据</p><strong id="doc-count">--</strong></div><span id="history-success" class="pill">--</span></section>
+
+        <section class="span-7">
+          <h2>项目亮点</h2>
+          <div id="highlights" class="list"></div>
+        </section>
+        <section class="span-5">
+          <h2>系统占用</h2>
+          <div id="metrics"></div>
+        </section>
+        <section class="span-12">
+          <h2>事故时间线</h2>
+          <div id="timeline" class="list"></div>
+        </section>
+      </div>
+
+      <div id="story-view" class="grid view">
+        <section class="span-12">
+          <h2>Agent 调用过程</h2>
+          <div id="story" class="list"></div>
+        </section>
+      </div>
+
+      <div id="agents-view" class="grid view">
+        <section class="span-12">
+          <h2>Agent 运行状态</h2>
+          <div id="agents" class="list"></div>
+        </section>
+      </div>
+
+      <div id="tools-view" class="grid view">
+        <section class="span-12">
+          <h2>工具调用历史</h2>
+          <div class="toolbar">
+            <input id="tool-search" placeholder="搜索工具、状态、摘要、payload">
+            <select id="tool-status"><option value="">全部状态</option><option value="completed">completed</option><option value="error">error</option><option value="started">started</option></select>
+          </div>
+          <table>
+            <thead><tr><th>工具/节点</th><th>状态</th><th>开始时间</th><th>耗时</th><th>摘要</th></tr></thead>
+            <tbody id="tools"></tbody>
+          </table>
+        </section>
+      </div>
+
+      <div id="docs-view" class="grid view">
+        <section class="span-12">
+          <h2>SOP 与技能文档</h2>
+          <div class="toolbar">
+            <input id="doc-search" placeholder="搜索 SOP、技能、命令、路径">
+            <select id="doc-kind"><option value="">全部文档</option><option value="sop">SOP</option><option value="skill">技能</option></select>
+          </div>
+          <div id="documents" class="list"></div>
+        </section>
+      </div>
+
+      <div id="logs-view" class="grid view">
+        <section class="span-12">
+          <h2>日志回放</h2>
+          <div class="toolbar">
+            <input id="log-search" placeholder="搜索日志内容">
+            <select id="log-level"><option value="">全部级别</option><option value="info">info</option><option value="warning">warning</option><option value="error">error</option></select>
+          </div>
+          <div id="logs" class="list"></div>
+        </section>
+      </div>
+
+      <div id="history-view" class="grid view">
+        <section class="span-12">
+          <h2>问题解决历史</h2>
+          <div id="history" class="list"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div id="overlay" class="overlay"></div>
+  <aside id="drawer" class="drawer">
+    <div class="drawer-header">
+      <div><h2 id="drawer-title">详情</h2><p id="drawer-subtitle" class="muted"></p></div>
+      <button id="drawer-close" class="secondary">关闭</button>
+    </div>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let state = null;
+
+    const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    const fmtTime = (value) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? escapeHTML(value) : date.toLocaleString();
+    };
+    const pill = (status) => '<span class="pill ' + escapeHTML(status || 'info') + '">' + escapeHTML(status || 'info') + '</span>';
+    const pct = (value) => Math.max(0, Math.min(100, Number(value || 0)));
+    const match = (text, query) => String(text || '').toLowerCase().includes(String(query || '').toLowerCase());
+    const pretty = (value) => escapeHTML(JSON.stringify(value, null, 2));
+
+    function openDrawer(title, subtitle, html) {
+      $('drawer-title').textContent = title;
+      $('drawer-subtitle').textContent = subtitle || '';
+      $('drawer-body').innerHTML = html;
+      $('drawer').classList.add('open');
+      $('overlay').classList.add('open');
+    }
+
+    function closeDrawer() {
+      $('drawer').classList.remove('open');
+      $('overlay').classList.remove('open');
+    }
+
+    function render(snapshot) {
+      state = snapshot;
+      $('incident-status').textContent = snapshot.incident.status;
+      $('incident-severity').textContent = snapshot.incident.severity;
+      $('incident-severity').className = 'pill ' + snapshot.incident.severity;
+      $('score').textContent = Number(snapshot.system.health_score || 0).toFixed(1);
+      $('health-pill').textContent = snapshot.system.is_healthy ? 'healthy' : 'degraded';
+      $('health-pill').className = 'pill ' + (snapshot.system.is_healthy ? 'healthy' : 'degraded');
+      $('tool-count').textContent = snapshot.tools.total;
+      $('tool-errors').textContent = snapshot.tools.errors + ' 错误';
+      $('tool-errors').className = 'pill ' + (snapshot.tools.errors ? 'error' : 'completed');
+      $('doc-count').textContent = snapshot.documents.total;
+      $('history-success').textContent = snapshot.history.success + ' 修复';
+      $('history-success').className = 'pill completed';
+
+      renderHighlights();
+      renderMetrics();
+      renderTimeline();
+      renderStory();
+      renderAgents();
+      renderTools();
+      renderDocuments();
+      renderLogs();
+      renderHistory();
+      $('connection').textContent = 'GitHub Pages demo mode: 预置事故 ' + snapshot.incident.id + '，最近生成 ' + fmtTime(snapshot.generated_at) + '。';
+    }
+
+    function renderHighlights() {
+      $('highlights').innerHTML = state.project_highlights.map((item) =>
+        '<div class="row"><div class="row-head"><h3>' + escapeHTML(item.title) + '</h3>' + pill('highlight') + '</div><p>' + escapeHTML(item.body) + '</p></div>'
+      ).join('');
+    }
+
+    function renderMetrics() {
+      const metrics = state.system.collected || {};
+      $('metrics').innerHTML = Object.keys(metrics).map((key) => {
+        const item = metrics[key];
+        return '<div style="margin-bottom:14px"><strong>' + escapeHTML(item.label) + '</strong><span class="muted" style="float:right">' + Number(item.value).toFixed(1) + escapeHTML(item.unit) + '</span><div class="bar"><span style="width:' + pct(item.value) + '%"></span></div></div>';
+      }).join('') + '<div class="pre">受管服务: ' + state.system.managed_services + '\\n巡检周期: ' + escapeHTML(state.system.config.check_interval) + '\\n模式: GitHub Pages 静态演示</div>';
+    }
+
+    function renderTimeline() {
+      $('timeline').innerHTML = state.timeline.map((event) =>
+        '<div class="timeline-row row" data-detail="timeline" data-id="' + escapeHTML(event.message) + '"><span class="muted">' + fmtTime(event.time) + '</span><span>' + pill(event.level) + '</span><span>' + escapeHTML(event.source + ': ' + event.message) + '</span></div>'
+      ).join('');
+    }
+
+    function renderStory() {
+      $('story').innerHTML = state.incident.story.map((item, index) =>
+        '<div class="row story-row" data-detail="story" data-id="' + index + '"><div class="muted">' + escapeHTML(item.time) + '</div><div><h3>' + escapeHTML(item.agent) + '</h3>' + pill(item.action.includes('执行') ? 'running' : 'completed') + '</div><div><h3>' + escapeHTML(item.action) + '</h3><p class="muted">输入: ' + escapeHTML(item.input) + '</p><p>输出: ' + escapeHTML(item.output) + '</p><p class="muted">' + item.steps.length + ' 个具体步骤，点击查看</p></div></div>'
+      ).join('');
+    }
+
+    function renderAgents() {
+      $('agents').innerHTML = state.agents.map((agent) =>
+        '<div class="row agent-row" data-detail="agent" data-id="' + escapeHTML(agent.name) + '"><div><h3>' + escapeHTML(agent.name) + '</h3><p class="muted">' + escapeHTML(agent.role) + '</p></div><div>' + escapeHTML(agent.last_event) + '</div><div>' + pill(agent.status) + '<p class="muted">' + agent.runs + ' 次 / ' + agent.errors + ' 错误</p></div></div>'
+      ).join('');
+    }
+
+    function renderTools() {
+      const query = $('tool-search').value;
+      const status = $('tool-status').value;
+      const tools = state.tools.recent.filter((tool) => (!status || tool.status === status) && match([tool.name, tool.status, tool.summary, JSON.stringify(tool.data)].join(' '), query));
+      $('tools').innerHTML = tools.map((tool) =>
+        '<tr class="clickable" data-detail="tool" data-id="' + escapeHTML(tool.id) + '"><td>' + escapeHTML(tool.name) + '</td><td>' + pill(tool.status) + '</td><td>' + fmtTime(tool.started_at) + '</td><td>' + tool.duration_millis + 'ms</td><td>' + escapeHTML(tool.summary) + '</td></tr>'
+      ).join('') || '<tr><td colspan="5" class="muted">暂无匹配的工具调用。</td></tr>';
+    }
+
+    function renderDocuments() {
+      const query = $('doc-search').value;
+      const kind = $('doc-kind').value;
+      const docs = state.documents.items.filter((doc) => (!kind || doc.kind === kind) && match([doc.title, doc.path, doc.preview, doc.commands.join(' ')].join(' '), query));
+      $('documents').innerHTML = docs.map((doc) =>
+        '<div class="row" data-detail="doc" data-id="' + escapeHTML(doc.id) + '"><div class="row-head"><div><h3>' + escapeHTML(doc.title) + '</h3><p class="muted">' + escapeHTML(doc.path) + '</p></div>' + pill(doc.kind) + '</div><p>' + escapeHTML(doc.preview) + '</p><p class="muted">' + doc.commands.length + ' 条命令</p></div>'
+      ).join('');
+    }
+
+    function renderLogs() {
+      const query = $('log-search').value;
+      const level = $('log-level').value;
+      const logs = state.logs.recent.filter((log) => (!level || log.level === level) && match(log.message, query));
+      $('logs').innerHTML = '<p>总日志 ' + state.logs.total + '，错误 ' + state.logs.errors + '，警告 ' + state.logs.warnings + '</p>' +
+        logs.map((log, index) => '<div class="row pre" data-detail="log" data-id="' + index + '">' + pill(log.level) + ' ' + escapeHTML(log.message) + '</div>').join('');
+    }
+
+    function renderHistory() {
+      $('history').innerHTML = state.history.recent.map((record) =>
+        '<div class="row" data-detail="history" data-id="' + escapeHTML(record.id) + '"><div class="row-head"><div><h3>' + escapeHTML(record.solution) + '</h3><p class="muted">' + escapeHTML(record.description) + '</p></div>' + pill(record.success ? 'completed' : 'error') + '</div><p class="muted">' + fmtTime(record.timestamp) + ' / ' + record.steps.length + ' 步</p></div>'
+      ).join('');
+    }
+
+    function detail(kind, id) {
+      if (kind === 'story') {
+        const item = state.incident.story[Number(id)];
+        openDrawer(item.agent + ' / ' + item.action, item.time, '<h3>输入</h3><div class="pre">' + escapeHTML(item.input) + '</div><h3>输出</h3><div class="pre">' + escapeHTML(item.output) + '</div><h3>具体执行步骤</h3><div class="pre">' + escapeHTML(item.steps.map((step, i) => (i + 1) + '. ' + step).join('\\n')) + '</div>');
+      }
+      if (kind === 'agent') {
+        const agent = state.agents.find((item) => item.name === id);
+        const related = state.tools.recent.filter((tool) => tool.name.startsWith(agent.name + '.') || (agent.name === 'CommandInterceptor' && tool.name.startsWith('CommandInterceptor')));
+        openDrawer(agent.name, agent.role, '<p>' + pill(agent.status) + ' 运行 ' + agent.runs + ' 次，错误 ' + agent.errors + ' 次</p><h3>最近事件</h3><div class="pre">' + escapeHTML(agent.last_event) + '</div><h3>关联工具调用</h3><div class="pre">' + pretty(related) + '</div>');
+      }
+      if (kind === 'tool') {
+        const tool = state.tools.recent.find((item) => item.id === id);
+        openDrawer(tool.name, tool.id, '<p>' + pill(tool.status) + ' 耗时 ' + tool.duration_millis + 'ms</p><h3>摘要</h3><div class="pre">' + escapeHTML(tool.summary) + '</div><h3>Payload Data</h3><div class="pre">' + pretty(tool.data) + '</div><h3>Trace 事件</h3><div class="pre">' + pretty(tool.events) + '</div>');
+      }
+      if (kind === 'doc') {
+        const doc = state.documents.items.find((item) => item.id === id);
+        openDrawer(doc.title, doc.path, '<p>' + pill(doc.kind) + '</p><h3>摘要</h3><div class="pre">' + escapeHTML(doc.preview) + '</div><h3>命令</h3><div class="pre">' + escapeHTML(doc.commands.join('\\n')) + '</div>');
+      }
+      if (kind === 'history') {
+        const record = state.history.recent.find((item) => item.id === id);
+        openDrawer(record.solution, record.description, '<p>' + pill(record.success ? 'completed' : 'error') + ' ' + fmtTime(record.timestamp) + '</p><h3>执行步骤</h3><div class="pre">' + escapeHTML(record.steps.map((step, i) => (i + 1) + '. ' + step).join('\\n')) + '</div>');
+      }
+      if (kind === 'log') {
+        const log = state.logs.recent[Number(id)];
+        openDrawer('日志详情', log.level, '<div class="pre">' + escapeHTML(log.message) + '</div>');
+      }
+      if (kind === 'timeline') {
+        openDrawer('时间线事件', '', '<div class="pre">' + escapeHTML(id) + '</div>');
+      }
+    }
+
+    document.body.addEventListener('click', (event) => {
+      const nav = event.target.closest('.nav');
+      if (nav) {
+        document.querySelectorAll('.nav').forEach((item) => item.classList.remove('active'));
+        document.querySelectorAll('.view').forEach((item) => item.classList.remove('active'));
+        nav.classList.add('active');
+        $(nav.dataset.view).classList.add('active');
+      }
+      const target = event.target.closest('[data-detail]');
+      if (target) detail(target.dataset.detail, target.dataset.id);
+    });
+    ['tool-search','tool-status'].forEach((id) => $(id).addEventListener('input', renderTools));
+    ['doc-search','doc-kind'].forEach((id) => $(id).addEventListener('input', renderDocuments));
+    ['log-search','log-level'].forEach((id) => $(id).addEventListener('input', renderLogs));
+    $('drawer-close').addEventListener('click', closeDrawer);
+    $('overlay').addEventListener('click', closeDrawer);
+    $('open-json').addEventListener('click', () => openDrawer('原始模拟数据', 'docs/demo/data/snapshot.json', '<div class="pre">' + pretty(state) + '</div>'));
+    $('open-incident').addEventListener('click', () => openDrawer(state.incident.title, state.incident.id, '<p>' + pill(state.incident.severity) + ' ' + pill(state.incident.status) + '</p><h3>影响</h3><p>' + escapeHTML(state.incident.impact) + '</p><h3>根因</h3><p>' + escapeHTML(state.incident.root_cause) + '</p><h3>解决</h3><p>' + escapeHTML(state.incident.resolution) + '</p>'));
+
+    fetch('./data/snapshot.json')
+      .then((response) => response.json())
+      .then(render)
+      .catch((error) => {
+        $('connection').textContent = '无法加载 demo 数据: ' + error.message;
+      });
+  </script>
+</body>
+</html>

@@ -8,6 +8,10 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Local build/runtime output
+build/
+data/
+
 # Output of the go coverage tool
 *.out
 
