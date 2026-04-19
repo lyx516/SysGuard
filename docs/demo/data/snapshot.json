@@ -662,6 +662,159 @@
         "systemctl is-active nginx"
       ],
       "final_state": "verified active"
-    }
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "monitor",
+          "label": "Monitor",
+          "kind": "probe",
+          "status": "completed",
+          "x": 60,
+          "y": 170
+        },
+        {
+          "id": "inspector",
+          "label": "Inspector",
+          "kind": "agent",
+          "status": "completed",
+          "x": 210,
+          "y": 170
+        },
+        {
+          "id": "coordinator",
+          "label": "Coordinator",
+          "kind": "agent",
+          "status": "completed",
+          "x": 380,
+          "y": 170
+        },
+        {
+          "id": "remediator",
+          "label": "Remediator",
+          "kind": "agent",
+          "status": "completed",
+          "x": 560,
+          "y": 170
+        },
+        {
+          "id": "knowledge",
+          "label": "SOP / History KB",
+          "kind": "knowledge",
+          "status": "completed",
+          "x": 560,
+          "y": 55
+        },
+        {
+          "id": "security",
+          "label": "CommandInterceptor",
+          "kind": "security",
+          "status": "approved",
+          "x": 740,
+          "y": 170
+        },
+        {
+          "id": "executor",
+          "label": "ShellExecutor",
+          "kind": "tool",
+          "status": "completed",
+          "x": 900,
+          "y": 170
+        },
+        {
+          "id": "history",
+          "label": "History Record",
+          "kind": "storage",
+          "status": "persisted",
+          "x": 900,
+          "y": 60
+        }
+      ],
+      "edges": [
+        {
+          "from": "monitor",
+          "to": "inspector",
+          "label": "health report"
+        },
+        {
+          "from": "inspector",
+          "to": "coordinator",
+          "label": "critical anomaly"
+        },
+        {
+          "from": "coordinator",
+          "to": "remediator",
+          "label": "dispatch"
+        },
+        {
+          "from": "remediator",
+          "to": "knowledge",
+          "label": "retrieve SOP"
+        },
+        {
+          "from": "knowledge",
+          "to": "remediator",
+          "label": "matched plan"
+        },
+        {
+          "from": "remediator",
+          "to": "security",
+          "label": "validate commands"
+        },
+        {
+          "from": "security",
+          "to": "executor",
+          "label": "approved execution"
+        },
+        {
+          "from": "executor",
+          "to": "remediator",
+          "label": "exit=0 active"
+        },
+        {
+          "from": "remediator",
+          "to": "history",
+          "label": "persist success"
+        }
+      ]
+    },
+    "health_topology": [
+      {
+        "name": "CPU",
+        "status": "healthy",
+        "value": 31.87,
+        "detail": "load within threshold"
+      },
+      {
+        "name": "Memory",
+        "status": "healthy",
+        "value": 76.33,
+        "detail": "below 90% threshold"
+      },
+      {
+        "name": "Disk",
+        "status": "healthy",
+        "value": 10,
+        "detail": "root mount healthy"
+      },
+      {
+        "name": "Network",
+        "status": "healthy",
+        "value": 18,
+        "detail": "active interfaces"
+      },
+      {
+        "name": "nginx",
+        "status": "recovered",
+        "value": 100,
+        "detail": "failed then active"
+      },
+      {
+        "name": "redis",
+        "status": "healthy",
+        "value": 100,
+        "detail": "no intervention needed"
+      }
+    ]
   }
 }

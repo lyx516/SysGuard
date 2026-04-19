@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,15 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 			Evidence []struct {
 				Name string `json:"name"`
 			} `json:"evidence"`
+			Graph struct {
+				Nodes []struct {
+					ID string `json:"id"`
+				} `json:"nodes"`
+				Edges []struct {
+					From string `json:"from"`
+					To   string `json:"to"`
+				} `json:"edges"`
+			} `json:"graph"`
 		} `json:"operations"`
 		Incident struct {
 			ID       string `json:"id"`
@@ -67,6 +77,9 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	if len(snapshot.Operations.Evidence) < 5 {
 		t.Fatalf("operations evidence = %d, want at least 5", len(snapshot.Operations.Evidence))
 	}
+	if len(snapshot.Operations.Graph.Nodes) < 5 || len(snapshot.Operations.Graph.Edges) < 5 {
+		t.Fatalf("operations graph nodes=%d edges=%d, want at least 5 each", len(snapshot.Operations.Graph.Nodes), len(snapshot.Operations.Graph.Edges))
+	}
 	if snapshot.Incident.ID == "" || snapshot.Incident.Severity != "critical" || snapshot.Incident.Status != "resolved" {
 		t.Fatalf("incident summary is not a resolved critical incident: %#v", snapshot.Incident)
 	}
@@ -88,5 +101,16 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	}
 	if len(snapshot.Documents.Items) < 4 {
 		t.Fatalf("documents = %d, want at least 4", len(snapshot.Documents.Items))
+	}
+
+	html, err := os.ReadFile(filepath.Join("..", "..", "docs", "demo", "index.html"))
+	if err != nil {
+		t.Fatalf("read demo html: %v", err)
+	}
+	htmlText := string(html)
+	for _, needle := range []string{"处理甘特图", "Agent 信息传输图", "组件健康拓扑", "工具调用时序"} {
+		if !strings.Contains(htmlText, needle) {
+			t.Fatalf("demo html should include visualization %q", needle)
+		}
 	}
 }
