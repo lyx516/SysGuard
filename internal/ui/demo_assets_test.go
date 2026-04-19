@@ -17,9 +17,17 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	}
 
 	var snapshot struct {
-		ProjectHighlights []struct {
-			Title string `json:"title"`
-		} `json:"project_highlights"`
+		Operations struct {
+			SLO struct {
+				Availability string `json:"availability"`
+			} `json:"slo"`
+			Queue []struct {
+				ID string `json:"id"`
+			} `json:"queue"`
+			Evidence []struct {
+				Name string `json:"name"`
+			} `json:"evidence"`
+		} `json:"operations"`
 		Incident struct {
 			ID       string `json:"id"`
 			Severity string `json:"severity"`
@@ -50,8 +58,14 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 		t.Fatalf("parse demo snapshot: %v", err)
 	}
 
-	if len(snapshot.ProjectHighlights) < 5 {
-		t.Fatalf("project highlights = %d, want at least 5", len(snapshot.ProjectHighlights))
+	if snapshot.Operations.SLO.Availability == "" {
+		t.Fatal("operations SLO availability should be populated")
+	}
+	if len(snapshot.Operations.Queue) < 3 {
+		t.Fatalf("operations queue = %d, want at least 3", len(snapshot.Operations.Queue))
+	}
+	if len(snapshot.Operations.Evidence) < 5 {
+		t.Fatalf("operations evidence = %d, want at least 5", len(snapshot.Operations.Evidence))
 	}
 	if snapshot.Incident.ID == "" || snapshot.Incident.Severity != "critical" || snapshot.Incident.Status != "resolved" {
 		t.Fatalf("incident summary is not a resolved critical incident: %#v", snapshot.Incident)

@@ -1,42 +1,16 @@
 {
   "generated_at": "2026-04-19T07:42:30Z",
   "demo_mode": true,
-  "project_highlights": [
-    {
-      "title": "持续巡检",
-      "body": "Inspector 按固定周期采集 CPU、内存、磁盘、网络和受管服务状态，生成结构化健康报告。"
-    },
-    {
-      "title": "多 Agent 协同",
-      "body": "Coordinator 负责异常路由，Remediator 负责检索 SOP、生成修复计划并执行安全命令。"
-    },
-    {
-      "title": "SOP 与历史复用",
-      "body": "异常发生后优先检索本地 SOP 和历史成功修复记录，减少重复排障。"
-    },
-    {
-      "title": "安全执行",
-      "body": "危险命令会经过拦截器识别，生产环境可开启人工审批，演示中所有命令均为模拟执行。"
-    },
-    {
-      "title": "可观测性",
-      "body": "每个 callback、工具调用、命令结果和修复记录都会沉淀为 trace、日志和历史记录，便于回放审计。"
-    },
-    {
-      "title": "A2UI 看板",
-      "body": "同一份数据既可以通过本地 SSE 实时刷新，也可以导出为 GitHub Pages 静态演示。"
-    }
-  ],
   "incident": {
     "id": "sim-nginx-critical-20260419",
-    "title": "模拟事故：nginx 进程不可用",
+    "title": "生产事件回放：入口服务 nginx 自动恢复",
     "severity": "critical",
     "status": "resolved",
     "started_at": "2026-04-19T07:37:01Z",
     "resolved_at": "2026-04-19T07:37:06Z",
-    "impact": "入口服务不可用，健康分从 100 降至 42.5。",
-    "root_cause": "演示数据模拟 nginx 进程缺失，系统资源本身正常。",
-    "resolution": "检索 SOP 后生成服务恢复计划，模拟查看日志、重启服务并验证 active 状态。",
+    "impact": "nginx 探测失败 1 次，外部入口在 5 秒内恢复；没有扩大到 redis 或主机资源异常。",
+    "root_cause": "服务进程缺失信号由服务探针发现，资源探针显示 CPU、内存、磁盘和网络正常。",
+    "resolution": "系统自动检索服务恢复 SOP，完成风险检查、模拟审批、重启命令与 active 验证，并写入历史记录。",
     "story": [
       {
         "time": "07:37:01.000",
@@ -603,5 +577,91 @@
       "level": "error",
       "message": "Inspector detected simulated nginx outage"
     }
-  ]
+  ],
+  "operations": {
+    "slo": {
+      "availability": "99.98%",
+      "mttr": "5s",
+      "last_check": "2026-04-19T07:37:06Z",
+      "active_incidents": 0,
+      "recovered_incidents_24h": 1,
+      "pending_approvals": 0
+    },
+    "queue": [
+      {
+        "id": "probe-nginx-http",
+        "lane": "health-check",
+        "status": "resolved",
+        "owner": "Inspector",
+        "summary": "nginx HTTP/process probe failed once, recovery verified",
+        "updated_at": "2026-04-19T07:37:06Z"
+      },
+      {
+        "id": "kb-nginx-sop",
+        "lane": "knowledge",
+        "status": "completed",
+        "owner": "Remediator",
+        "summary": "matched Nginx Service Recovery SOP and service-management skill",
+        "updated_at": "2026-04-19T07:37:03Z"
+      },
+      {
+        "id": "approval-systemctl-restart",
+        "lane": "security",
+        "status": "approved",
+        "owner": "CommandInterceptor",
+        "summary": "restart command marked risky; simulation approval attached",
+        "updated_at": "2026-04-19T07:37:04Z"
+      },
+      {
+        "id": "history-rec-nginx",
+        "lane": "learning",
+        "status": "persisted",
+        "owner": "Remediator",
+        "summary": "successful remediation stored for future reuse",
+        "updated_at": "2026-04-19T07:37:06Z"
+      }
+    ],
+    "evidence": [
+      {
+        "name": "健康报告",
+        "value": "services=down -> healthy",
+        "detail": "CPU 31.87%, memory 76.33%, disk 10%, network healthy; only nginx failed."
+      },
+      {
+        "name": "SOP 命中",
+        "value": "Nginx Service Recovery",
+        "detail": "KnowledgeBase.retrieve matched nginx/service/down keywords."
+      },
+      {
+        "name": "风险门禁",
+        "value": "systemctl restart requires approval",
+        "detail": "CommandInterceptor detected service-impacting operation and attached simulated approval."
+      },
+      {
+        "name": "命令结果",
+        "value": "exit_code=0",
+        "detail": "ShellExecutor returned SIMULATED: nginx restarted; verification active."
+      },
+      {
+        "name": "历史沉淀",
+        "value": "rec-sim-nginx-critical-20260419",
+        "detail": "Problem, solution, steps and metadata persisted for reuse."
+      },
+      {
+        "name": "日志统计",
+        "value": "8 lines / 1 warning / 0 errors",
+        "detail": "All stages are visible in log replay with timestamps."
+      }
+    ],
+    "runbook_result": {
+      "selected": "Recover service nginx",
+      "reason": "service_name=nginx metadata matched SOP placeholders",
+      "commands": [
+        "journalctl -u nginx -n 100 --no-pager",
+        "systemctl restart nginx",
+        "systemctl is-active nginx"
+      ],
+      "final_state": "verified active"
+    }
+  }
 }

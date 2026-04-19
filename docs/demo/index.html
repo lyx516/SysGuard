@@ -254,11 +254,11 @@
 <body>
   <header>
     <div>
-      <h1>SysGuard 静态演示看板</h1>
-      <p class="status-line" id="connection">GitHub Pages demo mode: 读取预置模拟事故数据。</p>
+      <h1>SysGuard 运维监控看板</h1>
+      <p class="status-line" id="connection">正在加载最近一次处理记录。</p>
     </div>
     <div class="actions">
-      <button id="open-incident">查看事故摘要</button>
+      <button id="open-incident">查看当前事件</button>
       <button id="open-json" class="secondary">查看原始 JSON</button>
       <a href="../../README.md"><button class="secondary">返回项目说明</button></a>
     </div>
@@ -281,10 +281,14 @@
         <section class="span-3 metric"><div><p class="muted">健康分</p><strong id="score">--</strong></div><span id="health-pill" class="pill">--</span></section>
         <section class="span-3 metric"><div><p class="muted">工具调用</p><strong id="tool-count">--</strong></div><span id="tool-errors" class="pill">--</span></section>
         <section class="span-3 metric"><div><p class="muted">文档证据</p><strong id="doc-count">--</strong></div><span id="history-success" class="pill">--</span></section>
+        <section class="span-3 metric"><div><p class="muted">SLO</p><strong id="slo">--</strong></div><span class="pill completed">availability</span></section>
+        <section class="span-3 metric"><div><p class="muted">MTTR</p><strong id="mttr">--</strong></div><span class="pill completed">resolved</span></section>
+        <section class="span-3 metric"><div><p class="muted">处理队列</p><strong id="queue-count">--</strong></div><span class="pill info">work items</span></section>
+        <section class="span-3 metric"><div><p class="muted">待审批</p><strong id="approval-count">--</strong></div><span class="pill completed">clear</span></section>
 
         <section class="span-7">
-          <h2>项目亮点</h2>
-          <div id="highlights" class="list"></div>
+          <h2>运行证据流</h2>
+          <div id="evidence" class="list"></div>
         </section>
         <section class="span-5">
           <h2>系统占用</h2>
@@ -293,6 +297,10 @@
         <section class="span-12">
           <h2>事故时间线</h2>
           <div id="timeline" class="list"></div>
+        </section>
+        <section class="span-12">
+          <h2>处理队列</h2>
+          <div id="queue" class="list"></div>
         </section>
       </div>
 
@@ -405,22 +413,27 @@
       $('doc-count').textContent = snapshot.documents.total;
       $('history-success').textContent = snapshot.history.success + ' 修复';
       $('history-success').className = 'pill completed';
+      $('slo').textContent = snapshot.operations.slo.availability;
+      $('mttr').textContent = snapshot.operations.slo.mttr;
+      $('queue-count').textContent = snapshot.operations.queue.length;
+      $('approval-count').textContent = snapshot.operations.slo.pending_approvals;
 
-      renderHighlights();
+      renderEvidence();
       renderMetrics();
       renderTimeline();
+      renderQueue();
       renderStory();
       renderAgents();
       renderTools();
       renderDocuments();
       renderLogs();
       renderHistory();
-      $('connection').textContent = 'GitHub Pages demo mode: 预置事故 ' + snapshot.incident.id + '，最近生成 ' + fmtTime(snapshot.generated_at) + '。';
+      $('connection').textContent = '最近处理记录 ' + snapshot.incident.id + '，状态 ' + snapshot.incident.status + '，生成时间 ' + fmtTime(snapshot.generated_at) + '。';
     }
 
-    function renderHighlights() {
-      $('highlights').innerHTML = state.project_highlights.map((item) =>
-        '<div class="row"><div class="row-head"><h3>' + escapeHTML(item.title) + '</h3>' + pill('highlight') + '</div><p>' + escapeHTML(item.body) + '</p></div>'
+    function renderEvidence() {
+      $('evidence').innerHTML = state.operations.evidence.map((item) =>
+        '<div class="row" data-detail="evidence" data-id="' + escapeHTML(item.name) + '"><div class="row-head"><h3>' + escapeHTML(item.name) + '</h3>' + pill(item.value) + '</div><p>' + escapeHTML(item.detail) + '</p></div>'
       ).join('');
     }
 
@@ -429,12 +442,18 @@
       $('metrics').innerHTML = Object.keys(metrics).map((key) => {
         const item = metrics[key];
         return '<div style="margin-bottom:14px"><strong>' + escapeHTML(item.label) + '</strong><span class="muted" style="float:right">' + Number(item.value).toFixed(1) + escapeHTML(item.unit) + '</span><div class="bar"><span style="width:' + pct(item.value) + '%"></span></div></div>';
-      }).join('') + '<div class="pre">受管服务: ' + state.system.managed_services + '\\n巡检周期: ' + escapeHTML(state.system.config.check_interval) + '\\n模式: GitHub Pages 静态演示</div>';
+      }).join('') + '<div class="pre">SLO 可用性: ' + escapeHTML(state.operations.slo.availability) + '\\nMTTR: ' + escapeHTML(state.operations.slo.mttr) + '\\n活跃事件: ' + state.operations.slo.active_incidents + '\\n待审批: ' + state.operations.slo.pending_approvals + '\\n受管服务: ' + state.system.managed_services + '\\n巡检周期: ' + escapeHTML(state.system.config.check_interval) + '</div>';
     }
 
     function renderTimeline() {
       $('timeline').innerHTML = state.timeline.map((event) =>
         '<div class="timeline-row row" data-detail="timeline" data-id="' + escapeHTML(event.message) + '"><span class="muted">' + fmtTime(event.time) + '</span><span>' + pill(event.level) + '</span><span>' + escapeHTML(event.source + ': ' + event.message) + '</span></div>'
+      ).join('');
+    }
+
+    function renderQueue() {
+      $('queue').innerHTML = state.operations.queue.map((item) =>
+        '<div class="row" data-detail="queue" data-id="' + escapeHTML(item.id) + '"><div class="row-head"><div><h3>' + escapeHTML(item.summary) + '</h3><p class="muted">' + escapeHTML(item.owner + ' / ' + item.lane + ' / ' + fmtTime(item.updated_at)) + '</p></div>' + pill(item.status) + '</div></div>'
       ).join('');
     }
 
@@ -510,6 +529,14 @@
       }
       if (kind === 'timeline') {
         openDrawer('时间线事件', '', '<div class="pre">' + escapeHTML(id) + '</div>');
+      }
+      if (kind === 'evidence') {
+        const item = state.operations.evidence.find((entry) => entry.name === id);
+        openDrawer(item.name, item.value, '<div class="pre">' + escapeHTML(item.detail) + '</div><h3>关联运行队列</h3><div class="pre">' + pretty(state.operations.queue) + '</div>');
+      }
+      if (kind === 'queue') {
+        const item = state.operations.queue.find((entry) => entry.id === id);
+        openDrawer(item.summary, item.id, '<p>' + pill(item.status) + ' ' + escapeHTML(item.owner) + '</p><div class="pre">lane=' + escapeHTML(item.lane) + '\\nupdated_at=' + escapeHTML(item.updated_at) + '\\n' + escapeHTML(item.summary) + '</div>');
       }
     }
 
