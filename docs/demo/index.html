@@ -400,6 +400,7 @@
     }
 
     function render(snapshot) {
+      snapshot = normalizeSnapshot(snapshot);
       state = snapshot;
       $('incident-status').textContent = snapshot.incident.status;
       $('incident-severity').textContent = snapshot.incident.severity;
@@ -429,6 +430,55 @@
       renderLogs();
       renderHistory();
       $('connection').textContent = '最近处理记录 ' + snapshot.incident.id + '，状态 ' + snapshot.incident.status + '，生成时间 ' + fmtTime(snapshot.generated_at) + '。';
+    }
+
+    function normalizeSnapshot(snapshot) {
+      const incident = snapshot.incident || {
+        id: 'live-local',
+        title: '本地实时巡检',
+        severity: snapshot.system && snapshot.system.is_healthy ? 'info' : 'warning',
+        status: snapshot.system && snapshot.system.is_healthy ? 'healthy' : 'attention',
+        impact: '本地实时看板数据来自 /api/snapshot。',
+        root_cause: '当前没有静态演示 incident 字段，页面已按实时快照生成运行摘要。',
+        resolution: '继续观察 Agent、工具调用、日志和历史记录。'
+      };
+      const tools = snapshot.tools || { total: 0, errors: 0, recent: [] };
+      const history = snapshot.history || { success: 0, recent: [] };
+      const docs = snapshot.documents || { total: 0, items: [] };
+      const operations = snapshot.operations || {
+        slo: {
+          availability: snapshot.system && snapshot.system.is_healthy ? '100%' : 'degraded',
+          mttr: history.recent && history.recent.length ? 'recorded' : '--',
+          active_incidents: snapshot.system && snapshot.system.is_healthy ? 0 : 1,
+          pending_approvals: 0
+        },
+        queue: [
+          { id: 'live-health', lane: 'health-check', status: snapshot.system && snapshot.system.is_healthy ? 'healthy' : 'attention', owner: 'Inspector', summary: 'latest health snapshot rendered from local API', updated_at: snapshot.generated_at },
+          { id: 'live-tools', lane: 'trace', status: tools.errors ? 'attention' : 'completed', owner: 'Observability', summary: tools.total + ' tool callbacks loaded', updated_at: snapshot.generated_at },
+          { id: 'live-history', lane: 'learning', status: history.success ? 'persisted' : 'standby', owner: 'Remediator', summary: history.success + ' successful remediation records', updated_at: snapshot.generated_at }
+        ],
+        evidence: [
+          { name: '健康分', value: String(snapshot.system ? snapshot.system.health_score : '--'), detail: '实时健康分来自本地 Monitor。' },
+          { name: '工具调用', value: String(tools.total), detail: 'Trace callback 和工具调用总数。' },
+          { name: '错误调用', value: String(tools.errors), detail: '当前工具调用错误计数。' },
+          { name: '修复历史', value: String(history.success), detail: '成功修复记录数量。' },
+          { name: '文档证据', value: String(docs.total), detail: 'SOP 与技能文档数量。' }
+        ]
+      };
+      snapshot.incident = incident;
+      snapshot.tools = tools;
+      snapshot.history = history;
+      snapshot.documents = docs;
+      snapshot.operations = operations;
+      snapshot.incident.story = snapshot.incident.story || (snapshot.agents || []).map((agent) => ({
+        time: agent.last_seen || snapshot.generated_at,
+        agent: agent.name,
+        action: agent.role,
+        input: 'local snapshot',
+        output: agent.last_event || agent.status,
+        steps: ['读取本地实时快照。', '渲染 Agent 状态、工具调用和日志。']
+      }));
+      return snapshot;
     }
 
     function renderEvidence() {
