@@ -10,7 +10,7 @@
 
 # Local build/runtime output
 build/
-data/
+/data/
 
 # Output of the go coverage tool
 *.out

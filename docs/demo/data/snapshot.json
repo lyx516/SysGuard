@@ -1,0 +1,607 @@
+{
+  "generated_at": "2026-04-19T07:42:30Z",
+  "demo_mode": true,
+  "project_highlights": [
+    {
+      "title": "持续巡检",
+      "body": "Inspector 按固定周期采集 CPU、内存、磁盘、网络和受管服务状态，生成结构化健康报告。"
+    },
+    {
+      "title": "多 Agent 协同",
+      "body": "Coordinator 负责异常路由，Remediator 负责检索 SOP、生成修复计划并执行安全命令。"
+    },
+    {
+      "title": "SOP 与历史复用",
+      "body": "异常发生后优先检索本地 SOP 和历史成功修复记录，减少重复排障。"
+    },
+    {
+      "title": "安全执行",
+      "body": "危险命令会经过拦截器识别，生产环境可开启人工审批，演示中所有命令均为模拟执行。"
+    },
+    {
+      "title": "可观测性",
+      "body": "每个 callback、工具调用、命令结果和修复记录都会沉淀为 trace、日志和历史记录，便于回放审计。"
+    },
+    {
+      "title": "A2UI 看板",
+      "body": "同一份数据既可以通过本地 SSE 实时刷新，也可以导出为 GitHub Pages 静态演示。"
+    }
+  ],
+  "incident": {
+    "id": "sim-nginx-critical-20260419",
+    "title": "模拟事故：nginx 进程不可用",
+    "severity": "critical",
+    "status": "resolved",
+    "started_at": "2026-04-19T07:37:01Z",
+    "resolved_at": "2026-04-19T07:37:06Z",
+    "impact": "入口服务不可用，健康分从 100 降至 42.5。",
+    "root_cause": "演示数据模拟 nginx 进程缺失，系统资源本身正常。",
+    "resolution": "检索 SOP 后生成服务恢复计划，模拟查看日志、重启服务并验证 active 状态。",
+    "story": [
+      {
+        "time": "07:37:01.000",
+        "agent": "Inspector",
+        "action": "执行周期性健康检查",
+        "input": "monitor.CheckHealth(ctx)",
+        "output": "score=42.5, services=down, failed_service=nginx",
+        "steps": [
+          "读取 CPU load、内存占用、磁盘使用率和网络接口状态。",
+          "检查受管服务 nginx，发现进程不可用。",
+          "构造 critical anomaly，写入 trace callback_completed。"
+        ]
+      },
+      {
+        "time": "07:37:02.200",
+        "agent": "Coordinator",
+        "action": "接收异常并路由到修复 Agent",
+        "input": "monitor.Anomaly{severity=critical, service_name=nginx}",
+        "output": "dispatch Remediator.remediate",
+        "steps": [
+          "记录异常来源、严重级别和描述。",
+          "判定该异常需要修复闭环而不是只告警。",
+          "调用 Remediator 并把 anomaly metadata 透传给后续步骤。"
+        ]
+      },
+      {
+        "time": "07:37:03.000",
+        "agent": "Remediator",
+        "action": "检索 SOP 与历史修复记录",
+        "input": "query='nginx process unavailable'",
+        "output": "matched SOP: Nginx Service Recovery",
+        "steps": [
+          "从 docs/sop 检索与 nginx/service/down 相关的操作文档。",
+          "查询 data/history.json 中是否存在相似成功修复方案。",
+          "选择 Recover service nginx 计划，生成三条受控命令。"
+        ]
+      },
+      {
+        "time": "07:37:04.000",
+        "agent": "CommandInterceptor",
+        "action": "检查命令风险",
+        "input": "journalctl / systemctl restart / systemctl is-active",
+        "output": "restart 命令被标记为需要审批；演示模式自动标记 simulated_approved",
+        "steps": [
+          "对每条命令执行注入字符和危险前缀检查。",
+          "识别 systemctl restart nginx 属于有影响操作。",
+          "演示模式不触碰真实服务，只生成审批与执行 trace。"
+        ]
+      },
+      {
+        "time": "07:37:05.000",
+        "agent": "ShellExecutor",
+        "action": "执行修复命令",
+        "input": "systemctl restart nginx",
+        "output": "exit_code=0, stdout='SIMULATED: nginx restarted'",
+        "steps": [
+          "模拟读取最近 100 行 nginx 日志。",
+          "模拟重启 nginx 服务。",
+          "模拟 systemctl is-active nginx 返回 active。"
+        ]
+      },
+      {
+        "time": "07:37:06.000",
+        "agent": "Remediator",
+        "action": "写入修复历史",
+        "input": "plan result and executed steps",
+        "output": "HistoryRecord{Success=true}",
+        "steps": [
+          "将问题类型、描述、解决方案、命令步骤和 metadata 写入历史库。",
+          "将 trace 与日志汇总到看板时间线。",
+          "事故状态变为 resolved，可供后续相似异常复用。"
+        ]
+      }
+    ]
+  },
+  "system": {
+    "health_score": 100,
+    "is_healthy": true,
+    "managed_services": 2,
+    "components": [
+      {
+        "name": "cpu",
+        "status": "healthy",
+        "message": "CPU load 31.87%",
+        "metrics": {
+          "usage": 31.87,
+          "cores": 8,
+          "load1": 2.55
+        }
+      },
+      {
+        "name": "memory",
+        "status": "healthy",
+        "message": "Memory usage 76.33%",
+        "metrics": {
+          "usage": 76.33,
+          "total": 16384,
+          "used": 12506.59
+        }
+      },
+      {
+        "name": "disk",
+        "status": "healthy",
+        "message": "Disk usage 10.00% on /",
+        "metrics": {
+          "usage": 10,
+          "mount": "/",
+          "total": 460.43,
+          "used": 16.71
+        }
+      },
+      {
+        "name": "network",
+        "status": "healthy",
+        "message": "18 active network interface(s)",
+        "metrics": {
+          "active_interfaces": 18
+        }
+      },
+      {
+        "name": "services",
+        "status": "healthy",
+        "message": "nginx recovered; redis healthy",
+        "metrics": {
+          "configured": 2,
+          "recovered_service": "nginx"
+        }
+      }
+    ],
+    "config": {
+      "check_interval": "30s",
+      "trace_log": "logs/trace.log",
+      "history_path": "data/history.json"
+    },
+    "collected": {
+      "cpu": {
+        "label": "CPU",
+        "value": 31.87,
+        "unit": "%"
+      },
+      "memory": {
+        "label": "内存",
+        "value": 76.33,
+        "unit": "%"
+      },
+      "disk": {
+        "label": "磁盘",
+        "value": 10,
+        "unit": "%"
+      }
+    }
+  },
+  "agents": [
+    {
+      "name": "Coordinator",
+      "role": "调度巡检与修复流程",
+      "status": "healthy",
+      "runs": 1,
+      "errors": 0,
+      "last_event": "Coordinator.handleAnomaly: routed critical nginx incident to Remediator",
+      "last_seen": "2026-04-19T07:37:02.700Z"
+    },
+    {
+      "name": "Inspector",
+      "role": "持续健康巡检",
+      "status": "healthy",
+      "runs": 8,
+      "errors": 0,
+      "last_event": "Inspector.healthCheck: detected simulated nginx outage then verified recovery",
+      "last_seen": "2026-04-19T07:37:06.800Z"
+    },
+    {
+      "name": "Remediator",
+      "role": "SOP 检索与安全修复",
+      "status": "healthy",
+      "runs": 1,
+      "errors": 0,
+      "last_event": "Remediator.remediate: Recover service nginx completed",
+      "last_seen": "2026-04-19T07:37:06.000Z"
+    },
+    {
+      "name": "CommandInterceptor",
+      "role": "危险命令识别与审批门禁",
+      "status": "healthy",
+      "runs": 3,
+      "errors": 0,
+      "last_event": "CommandInterceptor.check: systemctl restart nginx marked simulated_approved",
+      "last_seen": "2026-04-19T07:37:04.300Z"
+    }
+  ],
+  "tools": {
+    "total": 6,
+    "errors": 0,
+    "recent": [
+      {
+        "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
+        "name": "ShellExecutor.systemctl",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:05.000Z",
+        "duration_millis": 600,
+        "summary": "ShellExecutor.systemctl: simulated restart and active verification completed",
+        "data": {
+          "command": "systemctl restart nginx",
+          "exit_code": 0,
+          "stdout": "SIMULATED: nginx restarted",
+          "stderr": "",
+          "verification": "systemctl is-active nginx -> active"
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:05.000Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
+              "name": "ShellExecutor.systemctl",
+              "simulation": true
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:05.600Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
+              "data": {
+                "command": "systemctl restart nginx",
+                "exit_code": 0,
+                "stdout": "SIMULATED: nginx restarted"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
+        "name": "CommandInterceptor.check",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:04.000Z",
+        "duration_millis": 300,
+        "summary": "CommandInterceptor.check: approved safe simulated command sequence",
+        "data": {
+          "checked_commands": [
+            "journalctl -u nginx -n 100 --no-pager",
+            "systemctl restart nginx",
+            "systemctl is-active nginx"
+          ],
+          "dangerous_command_detected": true,
+          "approval": "simulated_approved"
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:04.000Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
+              "name": "CommandInterceptor.check"
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:04.300Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
+              "data": {
+                "approval": "simulated_approved"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "Remediator.remediate-sim-nginx-critical-20260419",
+        "name": "Remediator.remediate",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:03.000Z",
+        "duration_millis": 3000,
+        "summary": "Remediator.remediate: generated and completed Recover service nginx plan",
+        "data": {
+          "plan": "Recover service nginx",
+          "source": "matched_sop",
+          "commands": [
+            "journalctl -u nginx -n 100 --no-pager",
+            "systemctl restart nginx",
+            "systemctl is-active nginx"
+          ],
+          "history_record": "rec-sim-nginx-critical-20260419"
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:03.000Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "Remediator.remediate-sim-nginx-critical-20260419",
+              "name": "Remediator.remediate",
+              "anomaly": "nginx process unavailable"
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:06.000Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "Remediator.remediate-sim-nginx-critical-20260419",
+              "data": {
+                "plan": "Recover service nginx",
+                "result": "simulated_success"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
+        "name": "KnowledgeBase.retrieve",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:03.150Z",
+        "duration_millis": 120,
+        "summary": "KnowledgeBase.retrieve: matched Nginx Service Recovery SOP",
+        "data": {
+          "query": "nginx process unavailable service down",
+          "matched_documents": [
+            "docs/sop/nginx-service-recovery.md",
+            "skills/service-management/SKILL.md"
+          ]
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:03.150Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
+              "name": "KnowledgeBase.retrieve"
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:03.270Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
+              "data": {
+                "top_match": "Nginx Service Recovery"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+        "name": "Coordinator.handleAnomaly",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:02.200Z",
+        "duration_millis": 500,
+        "summary": "Coordinator.handleAnomaly: routed critical service anomaly",
+        "data": {
+          "severity": "critical",
+          "source": "monitor",
+          "routed_to": "Remediator"
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:02.200Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+              "name": "Coordinator.handleAnomaly"
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:02.700Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+              "data": {
+                "routed_to": "Remediator"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+        "name": "Inspector.healthCheck",
+        "status": "completed",
+        "started_at": "2026-04-19T07:37:01.000Z",
+        "duration_millis": 800,
+        "summary": "Inspector.healthCheck: detected critical nginx service anomaly",
+        "data": {
+          "score": 42.5,
+          "healthy": false,
+          "failed_component": "services",
+          "failed_service": "nginx"
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-19T07:37:01.000Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+              "name": "Inspector.healthCheck"
+            }
+          },
+          {
+            "timestamp": "2026-04-19T07:37:01.800Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+              "data": {
+                "score": 42.5,
+                "anomaly": {
+                  "severity": "critical",
+                  "description": "SIMULATED: nginx process unavailable"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "logs": {
+    "total": 8,
+    "errors": 0,
+    "warnings": 1,
+    "recent": [
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:06Z Remediator: Remediation completed simulation=true"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:05Z ShellExecutor: Command succeeded cmd='systemctl restart nginx' exit=0 duration=600ms simulation=true"
+      },
+      {
+        "level": "warning",
+        "message": "2026-04-19T07:37:04Z CommandInterceptor: systemctl restart nginx requires approval; simulation auto-approved"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:03Z Remediator: Plan 'Recover service nginx' with 3 command(s)"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:03Z KnowledgeBase: matched Nginx Service Recovery SOP"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:02Z Coordinator: Anomaly detected - severity=critical source=monitor"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:01Z Inspector: Health check completed - score=42.50 healthy=false"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-19T07:37:00Z SysGuard started successfully"
+      }
+    ]
+  },
+  "history": {
+    "total": 1,
+    "success": 1,
+    "failed": 0,
+    "recent": [
+      {
+        "id": "rec-sim-nginx-critical-20260419",
+        "description": "SIMULATED: nginx process unavailable; generated to demonstrate abnormal incident handling",
+        "solution": "Recover service nginx",
+        "success": true,
+        "timestamp": "2026-04-19T07:37:06Z",
+        "steps": [
+          "Inspect recent nginx logs",
+          "Restart nginx service",
+          "Verify nginx active status",
+          "Persist successful remediation record"
+        ]
+      }
+    ]
+  },
+  "documents": {
+    "total": 4,
+    "by_kind": {
+      "sop": 2,
+      "skill": 2
+    },
+    "items": [
+      {
+        "id": "sop:nginx-service-recovery.md",
+        "kind": "sop",
+        "title": "Nginx Service Recovery",
+        "path": "docs/sop/nginx-service-recovery.md",
+        "preview": "用于 nginx 无法访问、进程不存在或 systemctl is-active 失败的恢复流程。",
+        "commands": [
+          "journalctl -u nginx -n 100 --no-pager",
+          "systemctl restart nginx",
+          "systemctl is-active nginx"
+        ]
+      },
+      {
+        "id": "sop:example-sop.md",
+        "kind": "sop",
+        "title": "通用服务异常 SOP",
+        "path": "docs/sop/example-sop.md",
+        "preview": "服务异常时检查日志、重启服务并验证状态。",
+        "commands": [
+          "journalctl -u <service_name> -n 100 --no-pager",
+          "systemctl restart <service_name>",
+          "systemctl is-active <service_name>"
+        ]
+      },
+      {
+        "id": "skill:service-management/SKILL.md",
+        "kind": "skill",
+        "title": "service-management",
+        "path": "skills/service-management/SKILL.md",
+        "preview": "Inspect, start, stop, restart and validate system services through SysGuard.",
+        "commands": [
+          "registry.Execute(ctx, \"service-management\", input)"
+        ]
+      },
+      {
+        "id": "skill:log-analysis/SKILL.md",
+        "kind": "skill",
+        "title": "log-analysis",
+        "path": "skills/log-analysis/SKILL.md",
+        "preview": "Analyze service logs for error, failed, warning, critical, exception and timeout signals.",
+        "commands": [
+          "registry.Execute(ctx, \"log-analysis\", input)"
+        ]
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "time": "2026-04-19T07:37:06Z",
+      "source": "history",
+      "level": "completed",
+      "message": "Recover service nginx"
+    },
+    {
+      "time": "2026-04-19T07:37:05Z",
+      "source": "tool",
+      "level": "completed",
+      "message": "ShellExecutor.systemctl: simulated restart and active verification completed"
+    },
+    {
+      "time": "2026-04-19T07:37:04Z",
+      "source": "security",
+      "level": "warning",
+      "message": "CommandInterceptor: restart command requires approval; simulation approved"
+    },
+    {
+      "time": "2026-04-19T07:37:03Z",
+      "source": "tool",
+      "level": "completed",
+      "message": "KnowledgeBase.retrieve: matched Nginx Service Recovery SOP"
+    },
+    {
+      "time": "2026-04-19T07:37:02Z",
+      "source": "agent",
+      "level": "completed",
+      "message": "Coordinator routed critical anomaly to Remediator"
+    },
+    {
+      "time": "2026-04-19T07:37:01Z",
+      "source": "agent",
+      "level": "error",
+      "message": "Inspector detected simulated nginx outage"
+    }
+  ]
+}
