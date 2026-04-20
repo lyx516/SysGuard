@@ -17,6 +17,7 @@ type Config struct {
 	KnowledgeBase KnowledgeBaseConfig
 	Observability ObservabilityConfig
 	Storage       StorageConfig
+	UI            UIConfig
 	Services      []string
 }
 
@@ -38,9 +39,11 @@ type InspectorConfig struct {
 }
 
 type RemediatorConfig struct {
-	CommandTimeout        time.Duration
-	AutoApproveSafe       bool
-	AllowInteractiveInput bool
+	CommandTimeout         time.Duration
+	AutoApproveSafe        bool
+	AllowInteractiveInput  bool
+	DryRun                 bool
+	VerifyAfterRemediation bool
 }
 
 type SecurityConfig struct {
@@ -63,6 +66,11 @@ type StorageConfig struct {
 	LogPath     string
 }
 
+type UIConfig struct {
+	Addr      string
+	AuthToken string
+}
+
 type pathEntry struct {
 	indent int
 	key    string
@@ -82,9 +90,11 @@ func Default() *Config {
 				Interval: 30 * time.Second,
 			},
 			Remediator: RemediatorConfig{
-				CommandTimeout:        2 * time.Minute,
-				AutoApproveSafe:       true,
-				AllowInteractiveInput: true,
+				CommandTimeout:         2 * time.Minute,
+				AutoApproveSafe:        true,
+				AllowInteractiveInput:  true,
+				DryRun:                 true,
+				VerifyAfterRemediation: true,
 			},
 		},
 		Security: SecurityConfig{
@@ -102,6 +112,9 @@ func Default() *Config {
 		Storage: StorageConfig{
 			HistoryPath: "./data/history.json",
 			LogPath:     "./logs/sysguard.log",
+		},
+		UI: UIConfig{
+			Addr: "127.0.0.1:8080",
 		},
 	}
 }
@@ -196,6 +209,12 @@ func Load(path string) (*Config, error) {
 	if v := values["agents.remediator.allow_interactive_input"]; v != "" {
 		cfg.Agents.Remediator.AllowInteractiveInput = parseBool(v, cfg.Agents.Remediator.AllowInteractiveInput)
 	}
+	if v := values["agents.remediator.dry_run"]; v != "" {
+		cfg.Agents.Remediator.DryRun = parseBool(v, cfg.Agents.Remediator.DryRun)
+	}
+	if v := values["agents.remediator.verify_after_remediation"]; v != "" {
+		cfg.Agents.Remediator.VerifyAfterRemediation = parseBool(v, cfg.Agents.Remediator.VerifyAfterRemediation)
+	}
 	if v := values["security.enable_approval"]; v != "" {
 		cfg.Security.EnableApproval = parseBool(v, cfg.Security.EnableApproval)
 	}
@@ -216,6 +235,12 @@ func Load(path string) (*Config, error) {
 	}
 	if v := values["logging.output"]; v != "" {
 		cfg.Storage.LogPath = v
+	}
+	if v := values["ui.addr"]; v != "" {
+		cfg.UI.Addr = v
+	}
+	if v := values["ui.auth_token"]; v != "" {
+		cfg.UI.AuthToken = v
 	}
 
 	if cmds := lists["security.dangerous_commands"]; len(cmds) > 0 {
@@ -271,6 +296,9 @@ func applyEnv(cfg *Config) {
 				cfg.Services = append(cfg.Services, trimmed)
 			}
 		}
+	}
+	if token := strings.TrimSpace(os.Getenv("SYSGUARD_UI_AUTH_TOKEN")); token != "" {
+		cfg.UI.AuthToken = token
 	}
 }
 

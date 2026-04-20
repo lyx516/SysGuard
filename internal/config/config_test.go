@@ -49,3 +49,38 @@ agents:
 		t.Fatalf("unexpected timeout: %s", cfg.Agents.Remediator.CommandTimeout)
 	}
 }
+
+func TestLoadParsesProductionGuardrails(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	content := `
+agents:
+  remediator:
+    dry_run: true
+    verify_after_remediation: true
+ui:
+  addr: "127.0.0.1:9090"
+  auth_token: "local-token"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if !cfg.Agents.Remediator.DryRun {
+		t.Fatal("expected remediator dry-run mode to be enabled")
+	}
+	if !cfg.Agents.Remediator.VerifyAfterRemediation {
+		t.Fatal("expected post-remediation verification to be enabled")
+	}
+	if cfg.UI.Addr != "127.0.0.1:9090" {
+		t.Fatalf("unexpected UI addr: %q", cfg.UI.Addr)
+	}
+	if cfg.UI.AuthToken != "local-token" {
+		t.Fatalf("unexpected UI auth token: %q", cfg.UI.AuthToken)
+	}
+}

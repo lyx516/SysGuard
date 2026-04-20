@@ -27,6 +27,8 @@ agents:
     auto_approve_safe_commands: true
     command_timeout: 2m
     allow_interactive_input: true
+    dry_run: true
+    verify_after_remediation: true
     max_retries: 3
 
 # 安全配置
@@ -66,6 +68,12 @@ observability:
   enable_tracing: true
   trace_log_path: "./logs/trace.log"
   enable_probes: true
+
+# UI 配置
+ui:
+  addr: "127.0.0.1:8080"
+  # 生产环境建议通过 SYSGUARD_UI_AUTH_TOKEN 注入
+  auth_token: ""
 
 # 存储配置
 storage:

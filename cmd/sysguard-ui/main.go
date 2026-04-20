@@ -20,7 +20,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "./configs/config.yaml", "Path to SysGuard config file")
-	addr := flag.String("addr", ":8080", "UI listen address")
+	addr := flag.String("addr", "", "UI listen address")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -50,10 +50,14 @@ func main() {
 	interceptor := security.NewCommandInterceptor(cfg.Security.DangerousCommands)
 	healthMonitor := monitor.NewMonitor(cfg, interceptor, obs)
 
+	listenAddr := cfg.UI.Addr
+	if *addr != "" {
+		listenAddr = *addr
+	}
 	collector := ui.NewCollector(cfg, healthMonitor, obs, historyKB)
-	server := ui.NewServer(*addr, collector)
+	server := ui.NewServer(listenAddr, collector)
 
-	log.Printf("SysGuard UI started at http://localhost%s", *addr)
+	log.Printf("SysGuard UI started at http://%s", listenAddr)
 	if err := server.ListenAndServe(ctx); err != nil {
 		log.Fatalf("SysGuard UI stopped with error: %v", err)
 	}

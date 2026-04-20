@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"log"
 	"os"
@@ -18,7 +19,10 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("./configs/config.yaml")
+	configPath := flag.String("config", "./configs/config.yaml", "Path to SysGuard config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
