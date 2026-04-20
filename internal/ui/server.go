@@ -2,10 +2,12 @@ package ui
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,6 +15,7 @@ type Server struct {
 	collector *Collector
 	addr      string
 	mux       *http.ServeMux
+	authToken string
 }
 
 func NewServer(addr string, collector *Collector) *Server {
@@ -20,6 +23,9 @@ func NewServer(addr string, collector *Collector) *Server {
 		addr:      addr,
 		collector: collector,
 		mux:       http.NewServeMux(),
+	}
+	if collector != nil && collector.cfg != nil {
+		server.authToken = collector.cfg.UI.AuthToken
 	}
 	server.routes()
 	return server
@@ -50,14 +56,46 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
-	s.mux.HandleFunc("/api/snapshot", s.handleSnapshot)
-	s.mux.HandleFunc("/api/tools", s.handleTools)
-	s.mux.HandleFunc("/api/logs", s.handleLogs)
-	s.mux.HandleFunc("/api/history", s.handleHistory)
-	s.mux.HandleFunc("/api/documents", s.handleDocuments)
-	s.mux.HandleFunc("/api/check", s.handleCheck)
-	s.mux.HandleFunc("/api/stream", s.handleStream)
-	s.mux.HandleFunc("/a2ui/render", s.handleA2UIRender)
+	s.mux.HandleFunc("/api/snapshot", s.withAuth(s.requireMethod(http.MethodGet, s.handleSnapshot)))
+	s.mux.HandleFunc("/api/tools", s.withAuth(s.requireMethod(http.MethodGet, s.handleTools)))
+	s.mux.HandleFunc("/api/logs", s.withAuth(s.requireMethod(http.MethodGet, s.handleLogs)))
+	s.mux.HandleFunc("/api/history", s.withAuth(s.requireMethod(http.MethodGet, s.handleHistory)))
+	s.mux.HandleFunc("/api/documents", s.withAuth(s.requireMethod(http.MethodGet, s.handleDocuments)))
+	s.mux.HandleFunc("/api/check", s.withAuth(s.requireMethod(http.MethodPost, s.handleCheck)))
+	s.mux.HandleFunc("/api/stream", s.withAuth(s.requireMethod(http.MethodGet, s.handleStream)))
+	s.mux.HandleFunc("/a2ui/render", s.withAuth(s.requireMethod(http.MethodGet, s.handleA2UIRender)))
+}
+
+func (s *Server) requireMethod(method string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != method {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.authToken == "" {
+			next(w, r)
+			return
+		}
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="sysguard"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		got := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.authToken)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="sysguard"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -115,10 +153,6 @@ func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	s.handleSnapshot(w, r)
 }
 

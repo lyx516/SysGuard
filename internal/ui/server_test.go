@@ -43,3 +43,49 @@ func TestServerExposesDashboardResourceEndpoints(t *testing.T) {
 		})
 	}
 }
+
+func TestServerRequiresBearerTokenForAPIWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.UI.AuthToken = "secret-token"
+	collector := NewCollector(cfg, nil, nil, nil)
+	server := NewServer(":0", collector)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/snapshot", nil)
+	res := httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status without token = %d, want 401", res.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/snapshot", nil)
+	req.Header.Set("Authorization", "secret-token")
+	res = httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status with bare token = %d, want 401", res.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/snapshot", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	res = httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status with bearer token = %d, want 200 body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestServerRejectsPostOnReadOnlyEndpoints(t *testing.T) {
+	t.Parallel()
+
+	collector := NewCollector(config.Default(), nil, nil, nil)
+	server := NewServer(":0", collector)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/logs", nil)
+	res := httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", res.Code)
+	}
+}
