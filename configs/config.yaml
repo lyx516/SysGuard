@@ -75,6 +75,19 @@ ui:
   # 生产环境建议通过 SYSGUARD_UI_AUTH_TOKEN 注入
   auth_token: ""
 
+# AI 配置
+# 当前版本先提供配置面，后续可在 Remediator 中启用模型辅助生成修复计划。
+# API Key 不建议写入配置文件，请通过 api_key_env 指向的环境变量注入。
+ai:
+  enabled: false
+  provider: openai
+  model: gpt-4.1-mini
+  api_key_env: OPENAI_API_KEY
+  base_url: "https://api.openai.com/v1"
+  timeout: 30s
+  max_tokens: 2048
+  temperature: 0.2
+
 # 存储配置
 storage:
   history_path: "./data/history.json"

@@ -84,3 +84,57 @@ ui:
 		t.Fatalf("unexpected UI auth token: %q", cfg.UI.AuthToken)
 	}
 }
+
+func TestLoadParsesAIConfigAndEnvKey(t *testing.T) {
+	t.Setenv("SYSGUARD_AI_API_KEY", "test-key")
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	content := `
+ai:
+  enabled: true
+  provider: openai
+  model: gpt-4.1-mini
+  api_key_env: SYSGUARD_AI_API_KEY
+  base_url: "https://api.openai.com/v1"
+  timeout: 45s
+  max_tokens: 2048
+  temperature: 0.2
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if !cfg.AI.Enabled {
+		t.Fatal("expected AI config to be enabled")
+	}
+	if cfg.AI.Provider != "openai" {
+		t.Fatalf("provider = %q, want openai", cfg.AI.Provider)
+	}
+	if cfg.AI.Model != "gpt-4.1-mini" {
+		t.Fatalf("model = %q, want gpt-4.1-mini", cfg.AI.Model)
+	}
+	if cfg.AI.APIKeyEnv != "SYSGUARD_AI_API_KEY" {
+		t.Fatalf("api key env = %q, want SYSGUARD_AI_API_KEY", cfg.AI.APIKeyEnv)
+	}
+	if cfg.AI.APIKey != "test-key" {
+		t.Fatalf("api key was not loaded from environment")
+	}
+	if cfg.AI.BaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("base url = %q", cfg.AI.BaseURL)
+	}
+	if cfg.AI.Timeout.String() != "45s" {
+		t.Fatalf("timeout = %s, want 45s", cfg.AI.Timeout)
+	}
+	if cfg.AI.MaxTokens != 2048 {
+		t.Fatalf("max tokens = %d, want 2048", cfg.AI.MaxTokens)
+	}
+	if cfg.AI.Temperature != 0.2 {
+		t.Fatalf("temperature = %v, want 0.2", cfg.AI.Temperature)
+	}
+}

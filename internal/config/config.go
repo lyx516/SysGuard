@@ -18,6 +18,7 @@ type Config struct {
 	Observability ObservabilityConfig
 	Storage       StorageConfig
 	UI            UIConfig
+	AI            AIConfig
 	Services      []string
 }
 
@@ -71,6 +72,18 @@ type UIConfig struct {
 	AuthToken string
 }
 
+type AIConfig struct {
+	Enabled     bool
+	Provider    string
+	Model       string
+	APIKeyEnv   string
+	APIKey      string
+	BaseURL     string
+	Timeout     time.Duration
+	MaxTokens   int
+	Temperature float64
+}
+
 type pathEntry struct {
 	indent int
 	key    string
@@ -115,6 +128,16 @@ func Default() *Config {
 		},
 		UI: UIConfig{
 			Addr: "127.0.0.1:8080",
+		},
+		AI: AIConfig{
+			Enabled:     false,
+			Provider:    "openai",
+			Model:       "gpt-4.1-mini",
+			APIKeyEnv:   "OPENAI_API_KEY",
+			BaseURL:     "https://api.openai.com/v1",
+			Timeout:     30 * time.Second,
+			MaxTokens:   2048,
+			Temperature: 0.2,
 		},
 	}
 }
@@ -242,6 +265,30 @@ func Load(path string) (*Config, error) {
 	if v := values["ui.auth_token"]; v != "" {
 		cfg.UI.AuthToken = v
 	}
+	if v := values["ai.enabled"]; v != "" {
+		cfg.AI.Enabled = parseBool(v, cfg.AI.Enabled)
+	}
+	if v := values["ai.provider"]; v != "" {
+		cfg.AI.Provider = v
+	}
+	if v := values["ai.model"]; v != "" {
+		cfg.AI.Model = v
+	}
+	if v := values["ai.api_key_env"]; v != "" {
+		cfg.AI.APIKeyEnv = v
+	}
+	if v := values["ai.base_url"]; v != "" {
+		cfg.AI.BaseURL = v
+	}
+	if v := values["ai.timeout"]; v != "" {
+		cfg.AI.Timeout = parseDuration(v, cfg.AI.Timeout)
+	}
+	if v := values["ai.max_tokens"]; v != "" {
+		cfg.AI.MaxTokens = parseInt(v, cfg.AI.MaxTokens)
+	}
+	if v := values["ai.temperature"]; v != "" {
+		cfg.AI.Temperature = parseFloat(v, cfg.AI.Temperature)
+	}
 
 	if cmds := lists["security.dangerous_commands"]; len(cmds) > 0 {
 		cfg.Security.DangerousCommands = cmds
@@ -279,6 +326,14 @@ func parseFloat(v string, fallback float64) float64 {
 	return f
 }
 
+func parseInt(v string, fallback int) int {
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return i
+}
+
 func parseBool(v string, fallback bool) bool {
 	b, err := strconv.ParseBool(v)
 	if err != nil {
@@ -299,6 +354,24 @@ func applyEnv(cfg *Config) {
 	}
 	if token := strings.TrimSpace(os.Getenv("SYSGUARD_UI_AUTH_TOKEN")); token != "" {
 		cfg.UI.AuthToken = token
+	}
+	if enabled := strings.TrimSpace(os.Getenv("SYSGUARD_AI_ENABLED")); enabled != "" {
+		cfg.AI.Enabled = parseBool(enabled, cfg.AI.Enabled)
+	}
+	if provider := strings.TrimSpace(os.Getenv("SYSGUARD_AI_PROVIDER")); provider != "" {
+		cfg.AI.Provider = provider
+	}
+	if model := strings.TrimSpace(os.Getenv("SYSGUARD_AI_MODEL")); model != "" {
+		cfg.AI.Model = model
+	}
+	if apiKeyEnv := strings.TrimSpace(os.Getenv("SYSGUARD_AI_API_KEY_ENV")); apiKeyEnv != "" {
+		cfg.AI.APIKeyEnv = apiKeyEnv
+	}
+	if baseURL := strings.TrimSpace(os.Getenv("SYSGUARD_AI_BASE_URL")); baseURL != "" {
+		cfg.AI.BaseURL = baseURL
+	}
+	if cfg.AI.APIKeyEnv != "" {
+		cfg.AI.APIKey = strings.TrimSpace(os.Getenv(cfg.AI.APIKeyEnv))
 	}
 }
 
