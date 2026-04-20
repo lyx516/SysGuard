@@ -1,0 +1,21 @@
+[Unit]
+Description=SysGuard host monitoring and remediation daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sysguard
+Group=sysguard
+WorkingDirectory=/opt/sysguard
+ExecStart=/opt/sysguard/sysguard -config /etc/sysguard/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/sysguard /var/log/sysguard
+
+[Install]
+WantedBy=multi-user.target

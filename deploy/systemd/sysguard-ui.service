@@ -1,0 +1,22 @@
+[Unit]
+Description=SysGuard local operations dashboard
+After=network-online.target sysguard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sysguard
+Group=sysguard
+WorkingDirectory=/opt/sysguard
+EnvironmentFile=-/etc/sysguard/ui.env
+ExecStart=/opt/sysguard/sysguard-ui -config /etc/sysguard/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/sysguard /var/log/sysguard
+
+[Install]
+WantedBy=multi-user.target
