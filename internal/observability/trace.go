@@ -12,11 +12,12 @@ import (
 
 // GlobalCallback 全局回调追踪器，记录工具调用链路
 type GlobalCallback struct {
-	mu          sync.RWMutex
-	callbacks   map[string]*CallbackRecord
-	probeStates map[string]ProbeState
-	enableTrace bool
+	mu           sync.RWMutex
+	callbacks    map[string]*CallbackRecord
+	probeStates  map[string]ProbeState
+	enableTrace  bool
 	traceLogPath string
+	writeErrors  uint64
 }
 
 // CallbackRecord 回调记录
@@ -46,9 +47,9 @@ func NewGlobalCallback(enableTrace bool, traceLogPath string) (*GlobalCallback, 
 	}
 
 	return &GlobalCallback{
-		callbacks:   make(map[string]*CallbackRecord),
-		probeStates: make(map[string]ProbeState),
-		enableTrace: enableTrace,
+		callbacks:    make(map[string]*CallbackRecord),
+		probeStates:  make(map[string]ProbeState),
+		enableTrace:  enableTrace,
 		traceLogPath: traceLogPath,
 	}, nil
 }
@@ -186,6 +187,12 @@ func (gc *GlobalCallback) GetAllProbeStates() map[string]ProbeState {
 	return states
 }
 
+func (gc *GlobalCallback) TraceWriteErrors() uint64 {
+	gc.mu.RLock()
+	defer gc.mu.RUnlock()
+	return gc.writeErrors
+}
+
 // GetTraceLog 获取追踪日志
 func (gc *GlobalCallback) GetTraceLog() string {
 	var sb strings.Builder
@@ -248,18 +255,72 @@ func (gc *GlobalCallback) writeEvent(kind string, payload map[string]interface{}
 	entry := map[string]interface{}{
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 		"type":      kind,
-		"payload":   payload,
+		"payload":   redactPayload(payload),
 	}
 	data, err := json.Marshal(entry)
 	if err != nil {
+		gc.writeErrors++
 		return
 	}
 
 	file, err := os.OpenFile(gc.traceLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
+		gc.writeErrors++
 		return
 	}
 	defer file.Close()
 
-	_, _ = file.Write(append(data, '\n'))
+	if _, err := file.Write(append(data, '\n')); err != nil {
+		gc.writeErrors++
+	}
+}
+
+func redactPayload(payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		return nil
+	}
+	redacted := make(map[string]interface{}, len(payload))
+	for k, v := range payload {
+		if isSensitiveKey(k) {
+			redacted[k] = "[REDACTED]"
+			continue
+		}
+		redacted[k] = redactValue(v)
+	}
+	return redacted
+}
+
+func redactValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		return redactPayload(typed)
+	case map[string]string:
+		redacted := make(map[string]string, len(typed))
+		for k, v := range typed {
+			if isSensitiveKey(k) {
+				redacted[k] = "[REDACTED]"
+			} else {
+				redacted[k] = v
+			}
+		}
+		return redacted
+	case []interface{}:
+		redacted := make([]interface{}, len(typed))
+		for i, item := range typed {
+			redacted[i] = redactValue(item)
+		}
+		return redacted
+	default:
+		return value
+	}
+}
+
+func isSensitiveKey(key string) bool {
+	lower := strings.ToLower(key)
+	for _, marker := range []string{"password", "passwd", "token", "secret", "credential"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

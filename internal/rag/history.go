@@ -161,7 +161,30 @@ func (h *HistoryKnowledgeBase) save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(h.storage, data, 0o644)
+
+	dir := filepath.Dir(h.storage)
+	tmp, err := os.CreateTemp(dir, ".history-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, h.storage); err != nil {
+		return err
+	}
+	return os.Chmod(h.storage, 0o600)
 }
 
 func tokenize(input string) []string {

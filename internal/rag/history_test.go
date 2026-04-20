@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -38,5 +39,30 @@ func TestHistoryKnowledgeBasePersistsRecords(t *testing.T) {
 	}
 	if len(matches) == 0 {
 		t.Fatalf("expected at least one similar record")
+	}
+}
+
+func TestHistoryKnowledgeBaseWritesPrivateHistoryFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	historyKB, err := NewHistoryKnowledgeBase(path)
+	if err != nil {
+		t.Fatalf("new history kb: %v", err)
+	}
+
+	if err := historyKB.AddRecord(context.Background(), &HistoryRecord{
+		Description: "disk full",
+		Solution:    "clean logs",
+		Success:     false,
+		Timestamp:   time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("add record: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat history file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("history file permission = %o, want 600", got)
 	}
 }
