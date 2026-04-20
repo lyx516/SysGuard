@@ -1,142 +1,181 @@
 {
-  "generated_at": "2026-04-19T07:42:30Z",
+  "generated_at": "2026-04-20T09:18:42Z",
   "demo_mode": true,
   "incident": {
-    "id": "sim-nginx-critical-20260419",
-    "title": "生产事件回放：入口服务 nginx 自动恢复",
-    "severity": "critical",
+    "id": "inc-20260420-edge-502-0147",
+    "title": "入口 nginx 502 抖动自动恢复",
+    "severity": "warning",
     "status": "resolved",
-    "started_at": "2026-04-19T07:37:01Z",
-    "resolved_at": "2026-04-19T07:37:06Z",
-    "impact": "nginx 探测失败 1 次，外部入口在 5 秒内恢复；没有扩大到 redis 或主机资源异常。",
-    "root_cause": "服务进程缺失信号由服务探针发现，资源探针显示 CPU、内存、磁盘和网络正常。",
-    "resolution": "系统自动检索服务恢复 SOP，完成风险检查、模拟审批、重启命令与 active 验证，并写入历史记录。",
+    "started_at": "2026-04-20T09:17:31.184Z",
+    "resolved_at": "2026-04-20T09:18:23.912Z",
+    "impact": "edge-nginx 在 52.7 秒内出现 17 次 /healthz 502，错误率峰值 8.6%；主机 CPU/内存/磁盘正常，redis 与 node-exporter 正常。",
+    "root_cause": "nginx worker 保持运行，但 upstream app socket 出现 stale upstream，reload 后 upstream 连接池刷新，探活恢复 200。",
+    "resolution": "系统先采集指标和日志，再匹配 Nginx 502 upstream stale SOP；风险门禁选择 reload 而非 restart，执行 nginx -t 与 reload，随后连续 3 次探活通过并写入历史。",
     "story": [
       {
-        "time": "07:37:01.000",
+        "time": "09:17:31.184",
+        "started_at": "2026-04-20T09:17:31.184Z",
+        "duration_millis": 1840,
         "agent": "Inspector",
-        "action": "执行周期性健康检查",
-        "input": "monitor.CheckHealth(ctx)",
-        "output": "score=42.5, services=down, failed_service=nginx",
+        "action": "触发异常判定",
+        "input": "health probe: GET http://127.0.0.1:8080/healthz, service probe: pgrep nginx",
+        "output": "nginx process=running, healthz=502, error_rate_5m=8.6%",
         "steps": [
-          "读取 CPU load、内存占用、磁盘使用率和网络接口状态。",
-          "检查受管服务 nginx，发现进程不可用。",
-          "构造 critical anomaly，写入 trace callback_completed。"
+          "采集 CPU/内存/磁盘，确认资源未越阈。",
+          "执行本地 /healthz 探活，连续 3 次 502。",
+          "检查 nginx 进程存在，判定为服务质量异常而非进程宕机。",
+          "生成 warning anomaly，附带 endpoint、status_code、error_rate_5m。"
         ]
       },
       {
-        "time": "07:37:02.200",
+        "time": "09:17:33.211",
+        "started_at": "2026-04-20T09:17:33.211Z",
+        "duration_millis": 620,
         "agent": "Coordinator",
-        "action": "接收异常并路由到修复 Agent",
-        "input": "monitor.Anomaly{severity=critical, service_name=nginx}",
-        "output": "dispatch Remediator.remediate",
+        "action": "路由异常",
+        "input": "Anomaly{source=edge-nginx, status_code=502, process=running}",
+        "output": "route=Remediator, priority=P2, approval_policy=guarded",
         "steps": [
-          "记录异常来源、严重级别和描述。",
-          "判定该异常需要修复闭环而不是只告警。",
-          "调用 Remediator 并把 anomaly metadata 透传给后续步骤。"
+          "根据 source=edge-nginx 选择服务修复路径。",
+          "把 process=running 透传给修复 Agent，避免直接 restart。",
+          "记录 P2 事件并打开处理队列项 inc-20260420-edge-502-0147。"
         ]
       },
       {
-        "time": "07:37:03.000",
+        "time": "09:17:34.004",
+        "started_at": "2026-04-20T09:17:34.004Z",
+        "duration_millis": 4360,
         "agent": "Remediator",
-        "action": "检索 SOP 与历史修复记录",
-        "input": "query='nginx process unavailable'",
-        "output": "matched SOP: Nginx Service Recovery",
+        "action": "检索 SOP 与历史",
+        "input": "query=\"nginx 502 upstream stale socket reload\"",
+        "output": "selected_runbook=Nginx 502 upstream recovery, confidence=0.72",
         "steps": [
-          "从 docs/sop 检索与 nginx/service/down 相关的操作文档。",
-          "查询 data/history.json 中是否存在相似成功修复方案。",
-          "选择 Recover service nginx 计划，生成三条受控命令。"
+          "检索 SOP，命中 upstream 502、nginx reload、socket stale 关键词。",
+          "查询历史库，找到一次相似 502 reload 成功记录但端口不同。",
+          "生成保守计划：先 nginx -t，再 reload，最后连续探活验证。"
         ]
       },
       {
-        "time": "07:37:04.000",
+        "time": "09:17:38.690",
+        "started_at": "2026-04-20T09:17:38.690Z",
+        "duration_millis": 910,
         "agent": "CommandInterceptor",
-        "action": "检查命令风险",
-        "input": "journalctl / systemctl restart / systemctl is-active",
-        "output": "restart 命令被标记为需要审批；演示模式自动标记 simulated_approved",
+        "action": "风险门禁",
+        "input": "commands=[nginx -t, systemctl reload nginx, curl healthz x3]",
+        "output": "reload allowed with audit note; restart rejected as unnecessary",
         "steps": [
-          "对每条命令执行注入字符和危险前缀检查。",
-          "识别 systemctl restart nginx 属于有影响操作。",
-          "演示模式不触碰真实服务，只生成审批与执行 trace。"
+          "识别 reload 为有影响但低风险命令。",
+          "拒绝更激进的 restart 候选，因为进程仍在且 nginx -t 可先验证配置。",
+          "附加审计标签 guarded_reload=true。"
         ]
       },
       {
-        "time": "07:37:05.000",
+        "time": "09:17:40.102",
+        "started_at": "2026-04-20T09:17:40.102Z",
+        "duration_millis": 13740,
         "agent": "ShellExecutor",
-        "action": "执行修复命令",
-        "input": "systemctl restart nginx",
-        "output": "exit_code=0, stdout='SIMULATED: nginx restarted'",
+        "action": "执行 reload 恢复计划",
+        "input": "nginx -t && systemctl reload nginx && curl /healthz",
+        "output": "nginx -t ok; reload exit=0; probes=200,200,200",
         "steps": [
-          "模拟读取最近 100 行 nginx 日志。",
-          "模拟重启 nginx 服务。",
-          "模拟 systemctl is-active nginx 返回 active。"
+          "执行 nginx -t，配置测试通过。",
+          "执行 systemctl reload nginx，退出码 0。",
+          "每 5 秒执行一次 /healthz，连续 3 次 HTTP 200。",
+          "记录 stdout、exit_code、duration 到 trace。"
         ]
       },
       {
-        "time": "07:37:06.000",
-        "agent": "Remediator",
-        "action": "写入修复历史",
-        "input": "plan result and executed steps",
-        "output": "HistoryRecord{Success=true}",
+        "time": "09:18:16.552",
+        "started_at": "2026-04-20T09:18:16.552Z",
+        "duration_millis": 7360,
+        "agent": "Inspector",
+        "action": "恢复验证",
+        "input": "post-remediation health checks",
+        "output": "health_score=96.4, edge-nginx healthy, error_rate_5m=0.3%",
         "steps": [
-          "将问题类型、描述、解决方案、命令步骤和 metadata 写入历史库。",
-          "将 trace 与日志汇总到看板时间线。",
-          "事故状态变为 resolved，可供后续相似异常复用。"
+          "重新采集组件状态，服务探活恢复。",
+          "检查 5 分钟错误率从 8.6% 下降到 0.3%。",
+          "把 incident 状态更新为 resolved。"
+        ]
+      },
+      {
+        "time": "09:18:23.912",
+        "started_at": "2026-04-20T09:18:23.912Z",
+        "duration_millis": 520,
+        "agent": "Remediator",
+        "action": "沉淀修复记录",
+        "input": "plan, command results, verification probes",
+        "output": "history_record=rec-20260420-edge-502-reload",
+        "steps": [
+          "写入问题描述、根因、解决方案和命令步骤。",
+          "保留 SOP 命中和 guarded_reload 审计标签。",
+          "供后续相似 502 抖动优先复用。"
         ]
       }
     ]
   },
   "system": {
-    "health_score": 100,
+    "health_score": 96.4,
     "is_healthy": true,
-    "managed_services": 2,
+    "managed_services": 4,
     "components": [
       {
         "name": "cpu",
         "status": "healthy",
-        "message": "CPU load 31.87%",
+        "message": "CPU load 38.40%",
         "metrics": {
-          "usage": 31.87,
+          "usage": 38.4,
           "cores": 8,
-          "load1": 2.55
+          "load1": 3.07
         }
       },
       {
         "name": "memory",
         "status": "healthy",
-        "message": "Memory usage 76.33%",
+        "message": "Memory usage 71.20%",
         "metrics": {
-          "usage": 76.33,
+          "usage": 71.2,
           "total": 16384,
-          "used": 12506.59
+          "used": 11665
         }
       },
       {
         "name": "disk",
         "status": "healthy",
-        "message": "Disk usage 10.00% on /",
+        "message": "Disk usage 46.00% on /var",
         "metrics": {
-          "usage": 10,
-          "mount": "/",
-          "total": 460.43,
-          "used": 16.71
+          "usage": 46,
+          "mount": "/var",
+          "total": 120,
+          "used": 55.2
         }
       },
       {
         "name": "network",
         "status": "healthy",
-        "message": "18 active network interface(s)",
+        "message": "p95 TCP connect 18ms",
         "metrics": {
-          "active_interfaces": 18
+          "active_interfaces": 6,
+          "p95_connect_ms": 18
         }
       },
       {
-        "name": "services",
-        "status": "healthy",
-        "message": "nginx recovered; redis healthy",
+        "name": "edge-nginx",
+        "status": "recovered",
+        "message": "healthz 502 -> 200 after reload",
         "metrics": {
-          "configured": 2,
-          "recovered_service": "nginx"
+          "failed_probes": 3,
+          "recovered_probes": 3,
+          "error_rate_before": 8.6,
+          "error_rate_after": 0.3
+        }
+      },
+      {
+        "name": "redis",
+        "status": "healthy",
+        "message": "redis ping 2ms",
+        "metrics": {
+          "latency_ms": 2
         }
       }
     ],
@@ -148,17 +187,22 @@
     "collected": {
       "cpu": {
         "label": "CPU",
-        "value": 31.87,
+        "value": 38.4,
         "unit": "%"
       },
       "memory": {
         "label": "内存",
-        "value": 76.33,
+        "value": 71.2,
         "unit": "%"
       },
       "disk": {
         "label": "磁盘",
-        "value": 10,
+        "value": 46,
+        "unit": "%"
+      },
+      "error_rate": {
+        "label": "5m错误率",
+        "value": 0.3,
         "unit": "%"
       }
     }
@@ -166,261 +210,319 @@
   "agents": [
     {
       "name": "Coordinator",
-      "role": "调度巡检与修复流程",
+      "role": "异常路由与优先级控制",
       "status": "healthy",
       "runs": 1,
       "errors": 0,
-      "last_event": "Coordinator.handleAnomaly: routed critical nginx incident to Remediator",
-      "last_seen": "2026-04-19T07:37:02.700Z"
+      "last_event": "P2 edge-nginx 502 routed to guarded remediation",
+      "last_seen": "2026-04-20T09:17:33.831Z"
     },
     {
       "name": "Inspector",
-      "role": "持续健康巡检",
+      "role": "主机、服务与端点巡检",
       "status": "healthy",
-      "runs": 8,
+      "runs": 12,
       "errors": 0,
-      "last_event": "Inspector.healthCheck: detected simulated nginx outage then verified recovery",
-      "last_seen": "2026-04-19T07:37:06.800Z"
+      "last_event": "post-remediation probe passed: 200,200,200",
+      "last_seen": "2026-04-20T09:18:23.912Z"
     },
     {
       "name": "Remediator",
-      "role": "SOP 检索与安全修复",
+      "role": "SOP 检索、计划生成与历史沉淀",
       "status": "healthy",
       "runs": 1,
       "errors": 0,
-      "last_event": "Remediator.remediate: Recover service nginx completed",
-      "last_seen": "2026-04-19T07:37:06.000Z"
+      "last_event": "guarded reload plan completed and persisted",
+      "last_seen": "2026-04-20T09:18:24.432Z"
     },
     {
       "name": "CommandInterceptor",
-      "role": "危险命令识别与审批门禁",
+      "role": "命令风险识别与审批门禁",
       "status": "healthy",
       "runs": 3,
       "errors": 0,
-      "last_event": "CommandInterceptor.check: systemctl restart nginx marked simulated_approved",
-      "last_seen": "2026-04-19T07:37:04.300Z"
+      "last_event": "restart rejected; reload allowed with audit tag",
+      "last_seen": "2026-04-20T09:17:39.600Z"
     }
   ],
   "tools": {
-    "total": 6,
+    "total": 7,
     "errors": 0,
     "recent": [
       {
-        "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
-        "name": "ShellExecutor.systemctl",
+        "id": "Remediator.persistHistory-inc-20260420",
+        "name": "Remediator.persistHistory",
         "status": "completed",
-        "started_at": "2026-04-19T07:37:05.000Z",
-        "duration_millis": 600,
-        "summary": "ShellExecutor.systemctl: simulated restart and active verification completed",
+        "started_at": "2026-04-20T09:18:23.912Z",
+        "duration_millis": 520,
+        "summary": "stored successful guarded reload remediation",
         "data": {
-          "command": "systemctl restart nginx",
-          "exit_code": 0,
-          "stdout": "SIMULATED: nginx restarted",
-          "stderr": "",
-          "verification": "systemctl is-active nginx -> active"
+          "record_id": "rec-20260420-edge-502-reload",
+          "success": true
         },
         "events": [
           {
-            "timestamp": "2026-04-19T07:37:05.000Z",
+            "timestamp": "2026-04-20T09:18:23.912Z",
             "type": "callback_started",
             "payload": {
-              "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
-              "name": "ShellExecutor.systemctl",
-              "simulation": true
+              "id": "Remediator.persistHistory-inc-20260420",
+              "name": "Remediator.persistHistory"
             }
           },
           {
-            "timestamp": "2026-04-19T07:37:05.600Z",
+            "timestamp": "2026-04-20T09:18:24.432Z",
             "type": "callback_completed",
             "payload": {
-              "id": "ShellExecutor.systemctl-sim-nginx-critical-20260419",
+              "id": "Remediator.persistHistory-inc-20260420",
               "data": {
-                "command": "systemctl restart nginx",
-                "exit_code": 0,
-                "stdout": "SIMULATED: nginx restarted"
+                "record_id": "rec-20260420-edge-502-reload",
+                "success": true
               }
             }
           }
         ]
       },
       {
-        "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
-        "name": "CommandInterceptor.check",
+        "id": "Inspector.verifyRecovery-inc-20260420",
+        "name": "Inspector.verifyRecovery",
         "status": "completed",
-        "started_at": "2026-04-19T07:37:04.000Z",
-        "duration_millis": 300,
-        "summary": "CommandInterceptor.check: approved safe simulated command sequence",
+        "started_at": "2026-04-20T09:18:16.552Z",
+        "duration_millis": 7360,
+        "summary": "post-remediation probes passed and error rate dropped",
         "data": {
-          "checked_commands": [
-            "journalctl -u nginx -n 100 --no-pager",
-            "systemctl restart nginx",
-            "systemctl is-active nginx"
+          "probes": [
+            200,
+            200,
+            200
           ],
-          "dangerous_command_detected": true,
-          "approval": "simulated_approved"
+          "error_rate_after": 0.3,
+          "health_score": 96.4
         },
         "events": [
           {
-            "timestamp": "2026-04-19T07:37:04.000Z",
+            "timestamp": "2026-04-20T09:18:16.552Z",
             "type": "callback_started",
             "payload": {
-              "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
-              "name": "CommandInterceptor.check"
+              "id": "Inspector.verifyRecovery-inc-20260420",
+              "name": "Inspector.verifyRecovery"
             }
           },
           {
-            "timestamp": "2026-04-19T07:37:04.300Z",
+            "timestamp": "2026-04-20T09:18:23.912Z",
             "type": "callback_completed",
             "payload": {
-              "id": "CommandInterceptor.check-sim-nginx-critical-20260419",
+              "id": "Inspector.verifyRecovery-inc-20260420",
               "data": {
-                "approval": "simulated_approved"
+                "probes": [
+                  200,
+                  200,
+                  200
+                ],
+                "error_rate_after": 0.3,
+                "health_score": 96.4
               }
             }
           }
         ]
       },
       {
-        "id": "Remediator.remediate-sim-nginx-critical-20260419",
-        "name": "Remediator.remediate",
+        "id": "ShellExecutor.reloadNginx-inc-20260420",
+        "name": "ShellExecutor.reloadNginx",
         "status": "completed",
-        "started_at": "2026-04-19T07:37:03.000Z",
-        "duration_millis": 3000,
-        "summary": "Remediator.remediate: generated and completed Recover service nginx plan",
+        "started_at": "2026-04-20T09:17:40.102Z",
+        "duration_millis": 13740,
+        "summary": "nginx config test, reload, and health probes completed",
         "data": {
-          "plan": "Recover service nginx",
-          "source": "matched_sop",
           "commands": [
-            "journalctl -u nginx -n 100 --no-pager",
-            "systemctl restart nginx",
-            "systemctl is-active nginx"
+            "nginx -t",
+            "systemctl reload nginx",
+            "curl -fsS http://127.0.0.1:8080/healthz"
           ],
-          "history_record": "rec-sim-nginx-critical-20260419"
-        },
-        "events": [
-          {
-            "timestamp": "2026-04-19T07:37:03.000Z",
-            "type": "callback_started",
-            "payload": {
-              "id": "Remediator.remediate-sim-nginx-critical-20260419",
-              "name": "Remediator.remediate",
-              "anomaly": "nginx process unavailable"
-            }
-          },
-          {
-            "timestamp": "2026-04-19T07:37:06.000Z",
-            "type": "callback_completed",
-            "payload": {
-              "id": "Remediator.remediate-sim-nginx-critical-20260419",
-              "data": {
-                "plan": "Recover service nginx",
-                "result": "simulated_success"
-              }
-            }
-          }
-        ]
-      },
-      {
-        "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
-        "name": "KnowledgeBase.retrieve",
-        "status": "completed",
-        "started_at": "2026-04-19T07:37:03.150Z",
-        "duration_millis": 120,
-        "summary": "KnowledgeBase.retrieve: matched Nginx Service Recovery SOP",
-        "data": {
-          "query": "nginx process unavailable service down",
-          "matched_documents": [
-            "docs/sop/nginx-service-recovery.md",
-            "skills/service-management/SKILL.md"
+          "exit_codes": [
+            0,
+            0,
+            0
+          ],
+          "probe_status": [
+            200,
+            200,
+            200
           ]
         },
         "events": [
           {
-            "timestamp": "2026-04-19T07:37:03.150Z",
+            "timestamp": "2026-04-20T09:17:40.102Z",
             "type": "callback_started",
             "payload": {
-              "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
+              "id": "ShellExecutor.reloadNginx-inc-20260420",
+              "name": "ShellExecutor.reloadNginx"
+            }
+          },
+          {
+            "timestamp": "2026-04-20T09:17:53.842Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "ShellExecutor.reloadNginx-inc-20260420",
+              "data": {
+                "commands": [
+                  "nginx -t",
+                  "systemctl reload nginx",
+                  "curl -fsS http://127.0.0.1:8080/healthz"
+                ],
+                "exit_codes": [
+                  0,
+                  0,
+                  0
+                ],
+                "probe_status": [
+                  200,
+                  200,
+                  200
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "CommandInterceptor.guard-inc-20260420",
+        "name": "CommandInterceptor.guard",
+        "status": "completed",
+        "started_at": "2026-04-20T09:17:38.690Z",
+        "duration_millis": 910,
+        "summary": "restart rejected, reload approved with audit note",
+        "data": {
+          "candidate_rejected": "systemctl restart nginx",
+          "approved": "systemctl reload nginx",
+          "guarded_reload": true
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-20T09:17:38.690Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "CommandInterceptor.guard-inc-20260420",
+              "name": "CommandInterceptor.guard"
+            }
+          },
+          {
+            "timestamp": "2026-04-20T09:17:39.600Z",
+            "type": "callback_completed",
+            "payload": {
+              "id": "CommandInterceptor.guard-inc-20260420",
+              "data": {
+                "candidate_rejected": "systemctl restart nginx",
+                "approved": "systemctl reload nginx",
+                "guarded_reload": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "KnowledgeBase.retrieve-inc-20260420",
+        "name": "KnowledgeBase.retrieve",
+        "status": "completed",
+        "started_at": "2026-04-20T09:17:34.004Z",
+        "duration_millis": 4360,
+        "summary": "matched nginx 502 upstream recovery SOP",
+        "data": {
+          "query": "nginx 502 upstream stale socket reload",
+          "top_match": "Nginx 502 upstream recovery",
+          "confidence": 0.72
+        },
+        "events": [
+          {
+            "timestamp": "2026-04-20T09:17:34.004Z",
+            "type": "callback_started",
+            "payload": {
+              "id": "KnowledgeBase.retrieve-inc-20260420",
               "name": "KnowledgeBase.retrieve"
             }
           },
           {
-            "timestamp": "2026-04-19T07:37:03.270Z",
+            "timestamp": "2026-04-20T09:17:38.364Z",
             "type": "callback_completed",
             "payload": {
-              "id": "KnowledgeBase.retrieve-sim-nginx-critical-20260419",
+              "id": "KnowledgeBase.retrieve-inc-20260420",
               "data": {
-                "top_match": "Nginx Service Recovery"
+                "query": "nginx 502 upstream stale socket reload",
+                "top_match": "Nginx 502 upstream recovery",
+                "confidence": 0.72
               }
             }
           }
         ]
       },
       {
-        "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+        "id": "Coordinator.handleAnomaly-inc-20260420",
         "name": "Coordinator.handleAnomaly",
         "status": "completed",
-        "started_at": "2026-04-19T07:37:02.200Z",
-        "duration_millis": 500,
-        "summary": "Coordinator.handleAnomaly: routed critical service anomaly",
+        "started_at": "2026-04-20T09:17:33.211Z",
+        "duration_millis": 620,
+        "summary": "routed P2 edge-nginx anomaly to Remediator",
         "data": {
-          "severity": "critical",
-          "source": "monitor",
-          "routed_to": "Remediator"
+          "priority": "P2",
+          "routed_to": "Remediator",
+          "reason": "process running but endpoint unhealthy"
         },
         "events": [
           {
-            "timestamp": "2026-04-19T07:37:02.200Z",
+            "timestamp": "2026-04-20T09:17:33.211Z",
             "type": "callback_started",
             "payload": {
-              "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+              "id": "Coordinator.handleAnomaly-inc-20260420",
               "name": "Coordinator.handleAnomaly"
             }
           },
           {
-            "timestamp": "2026-04-19T07:37:02.700Z",
+            "timestamp": "2026-04-20T09:17:33.831Z",
             "type": "callback_completed",
             "payload": {
-              "id": "Coordinator.handleAnomaly-sim-nginx-critical-20260419",
+              "id": "Coordinator.handleAnomaly-inc-20260420",
               "data": {
-                "routed_to": "Remediator"
+                "priority": "P2",
+                "routed_to": "Remediator",
+                "reason": "process running but endpoint unhealthy"
               }
             }
           }
         ]
       },
       {
-        "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+        "id": "Inspector.healthCheck-inc-20260420",
         "name": "Inspector.healthCheck",
         "status": "completed",
-        "started_at": "2026-04-19T07:37:01.000Z",
-        "duration_millis": 800,
-        "summary": "Inspector.healthCheck: detected critical nginx service anomaly",
+        "started_at": "2026-04-20T09:17:31.184Z",
+        "duration_millis": 1840,
+        "summary": "detected edge-nginx healthz 502 with host resources healthy",
         "data": {
-          "score": 42.5,
-          "healthy": false,
-          "failed_component": "services",
-          "failed_service": "nginx"
+          "score": 58.2,
+          "endpoint": "http://127.0.0.1:8080/healthz",
+          "status_code": 502,
+          "process": "running",
+          "error_rate_5m": 8.6
         },
         "events": [
           {
-            "timestamp": "2026-04-19T07:37:01.000Z",
+            "timestamp": "2026-04-20T09:17:31.184Z",
             "type": "callback_started",
             "payload": {
-              "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+              "id": "Inspector.healthCheck-inc-20260420",
               "name": "Inspector.healthCheck"
             }
           },
           {
-            "timestamp": "2026-04-19T07:37:01.800Z",
+            "timestamp": "2026-04-20T09:17:33.024Z",
             "type": "callback_completed",
             "payload": {
-              "id": "Inspector.healthCheck-sim-nginx-critical-20260419",
+              "id": "Inspector.healthCheck-inc-20260420",
               "data": {
-                "score": 42.5,
-                "anomaly": {
-                  "severity": "critical",
-                  "description": "SIMULATED: nginx process unavailable"
-                }
+                "score": 58.2,
+                "endpoint": "http://127.0.0.1:8080/healthz",
+                "status_code": 502,
+                "process": "running",
+                "error_rate_5m": 8.6
               }
             }
           }
@@ -429,60 +531,96 @@
     ]
   },
   "logs": {
-    "total": 8,
+    "total": 10,
     "errors": 0,
-    "warnings": 1,
+    "warnings": 2,
     "recent": [
       {
         "level": "info",
-        "message": "2026-04-19T07:37:06Z Remediator: Remediation completed simulation=true"
+        "message": "2026-04-20T09:18:24Z Remediator: history persisted rec-20260420-edge-502-reload"
       },
       {
         "level": "info",
-        "message": "2026-04-19T07:37:05Z ShellExecutor: Command succeeded cmd='systemctl restart nginx' exit=0 duration=600ms simulation=true"
+        "message": "2026-04-20T09:18:23Z Inspector: recovery verified health_score=96.4 error_rate_5m=0.3%"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-20T09:17:55Z ShellExecutor: curl healthz probe=200 attempt=3"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-20T09:17:45Z ShellExecutor: systemctl reload nginx exit=0"
+      },
+      {
+        "level": "info",
+        "message": "2026-04-20T09:17:40Z ShellExecutor: nginx -t ok"
       },
       {
         "level": "warning",
-        "message": "2026-04-19T07:37:04Z CommandInterceptor: systemctl restart nginx requires approval; simulation auto-approved"
+        "message": "2026-04-20T09:17:39Z CommandInterceptor: restart rejected; reload approved guarded_reload=true"
       },
       {
         "level": "info",
-        "message": "2026-04-19T07:37:03Z Remediator: Plan 'Recover service nginx' with 3 command(s)"
+        "message": "2026-04-20T09:17:34Z KnowledgeBase: matched Nginx 502 upstream recovery confidence=0.72"
       },
       {
         "level": "info",
-        "message": "2026-04-19T07:37:03Z KnowledgeBase: matched Nginx Service Recovery SOP"
+        "message": "2026-04-20T09:17:33Z Coordinator: routed P2 anomaly to Remediator"
+      },
+      {
+        "level": "warning",
+        "message": "2026-04-20T09:17:31Z Inspector: edge-nginx healthz=502 error_rate_5m=8.6%"
       },
       {
         "level": "info",
-        "message": "2026-04-19T07:37:02Z Coordinator: Anomaly detected - severity=critical source=monitor"
-      },
-      {
-        "level": "info",
-        "message": "2026-04-19T07:37:01Z Inspector: Health check completed - score=42.50 healthy=false"
-      },
-      {
-        "level": "info",
-        "message": "2026-04-19T07:37:00Z SysGuard started successfully"
+        "message": "2026-04-20T09:17:30Z Inspector: scheduled health check started"
       }
     ]
   },
   "history": {
-    "total": 1,
-    "success": 1,
+    "total": 3,
+    "success": 3,
     "failed": 0,
     "recent": [
       {
-        "id": "rec-sim-nginx-critical-20260419",
-        "description": "SIMULATED: nginx process unavailable; generated to demonstrate abnormal incident handling",
-        "solution": "Recover service nginx",
+        "id": "rec-20260420-edge-502-reload",
+        "description": "edge-nginx healthz 502 while process still running",
+        "solution": "Guarded nginx reload after config test",
         "success": true,
-        "timestamp": "2026-04-19T07:37:06Z",
+        "timestamp": "2026-04-20T09:18:24.432Z",
         "steps": [
-          "Inspect recent nginx logs",
-          "Restart nginx service",
-          "Verify nginx active status",
-          "Persist successful remediation record"
+          "Confirm host resources healthy",
+          "Confirm nginx process running but endpoint 502",
+          "Match Nginx 502 upstream recovery SOP",
+          "Reject restart candidate and approve reload",
+          "Run nginx -t",
+          "Reload nginx",
+          "Verify three HTTP 200 probes",
+          "Persist guarded_reload history record"
+        ]
+      },
+      {
+        "id": "rec-20260418-edge-502-reload",
+        "description": "similar upstream 502 on staging edge",
+        "solution": "Reload nginx after stale upstream socket",
+        "success": true,
+        "timestamp": "2026-04-18T22:11:09Z",
+        "steps": [
+          "Inspect error log",
+          "Reload nginx",
+          "Verify healthz"
+        ]
+      },
+      {
+        "id": "rec-20260416-redis-latency",
+        "description": "redis latency spike without error budget burn",
+        "solution": "Collect evidence and suppress remediation",
+        "success": true,
+        "timestamp": "2026-04-16T03:14:51Z",
+        "steps": [
+          "Measure redis ping",
+          "Check CPU steal",
+          "No action required"
         ]
       }
     ]
@@ -495,15 +633,15 @@
     },
     "items": [
       {
-        "id": "sop:nginx-service-recovery.md",
+        "id": "sop:nginx-502-upstream-recovery.md",
         "kind": "sop",
-        "title": "Nginx Service Recovery",
-        "path": "docs/sop/nginx-service-recovery.md",
-        "preview": "用于 nginx 无法访问、进程不存在或 systemctl is-active 失败的恢复流程。",
+        "title": "Nginx 502 upstream recovery",
+        "path": "docs/sop/nginx-502-upstream-recovery.md",
+        "preview": "当 nginx 进程存在但 /healthz 返回 502 时，先验证配置并优先 reload，避免直接 restart 扩大影响。",
         "commands": [
-          "journalctl -u nginx -n 100 --no-pager",
-          "systemctl restart nginx",
-          "systemctl is-active nginx"
+          "nginx -t",
+          "systemctl reload nginx",
+          "curl -fsS http://127.0.0.1:8080/healthz"
         ]
       },
       {
@@ -580,166 +718,175 @@
   ],
   "operations": {
     "slo": {
-      "availability": "99.98%",
-      "mttr": "5s",
-      "last_check": "2026-04-19T07:37:06Z",
+      "availability": "99.94%",
+      "mttr": "52.7s",
+      "last_check": "2026-04-20T09:18:42Z",
       "active_incidents": 0,
       "recovered_incidents_24h": 1,
-      "pending_approvals": 0
+      "pending_approvals": 0,
+      "error_budget_burn": "0.07%"
     },
     "queue": [
       {
-        "id": "probe-nginx-http",
+        "id": "probe-edge-nginx-502",
         "lane": "health-check",
         "status": "resolved",
         "owner": "Inspector",
-        "summary": "nginx HTTP/process probe failed once, recovery verified",
-        "updated_at": "2026-04-19T07:37:06Z"
+        "summary": "edge-nginx /healthz returned 502 three times; recovered after reload",
+        "updated_at": "2026-04-20T09:18:23.912Z"
       },
       {
-        "id": "kb-nginx-sop",
+        "id": "kb-nginx-502-sop",
         "lane": "knowledge",
         "status": "completed",
         "owner": "Remediator",
-        "summary": "matched Nginx Service Recovery SOP and service-management skill",
-        "updated_at": "2026-04-19T07:37:03Z"
+        "summary": "matched Nginx 502 upstream recovery and prior staging record",
+        "updated_at": "2026-04-20T09:17:38.364Z"
       },
       {
-        "id": "approval-systemctl-restart",
+        "id": "approval-guarded-reload",
         "lane": "security",
         "status": "approved",
         "owner": "CommandInterceptor",
-        "summary": "restart command marked risky; simulation approval attached",
-        "updated_at": "2026-04-19T07:37:04Z"
+        "summary": "restart candidate rejected; reload approved with guarded_reload audit tag",
+        "updated_at": "2026-04-20T09:17:39.600Z"
       },
       {
-        "id": "history-rec-nginx",
+        "id": "verify-200x3",
+        "lane": "verification",
+        "status": "completed",
+        "owner": "Inspector",
+        "summary": "three consecutive health probes returned HTTP 200",
+        "updated_at": "2026-04-20T09:18:16.552Z"
+      },
+      {
+        "id": "history-edge-502",
         "lane": "learning",
         "status": "persisted",
         "owner": "Remediator",
-        "summary": "successful remediation stored for future reuse",
-        "updated_at": "2026-04-19T07:37:06Z"
+        "summary": "guarded reload remediation stored for future 502 incidents",
+        "updated_at": "2026-04-20T09:18:24.432Z"
       }
     ],
     "evidence": [
       {
-        "name": "健康报告",
-        "value": "services=down -> healthy",
-        "detail": "CPU 31.87%, memory 76.33%, disk 10%, network healthy; only nginx failed."
+        "name": "异常面",
+        "value": "healthz=502 / process=running",
+        "detail": "进程未宕机，只有入口探活失败；避免误判为整机故障。"
+      },
+      {
+        "name": "资源排除",
+        "value": "CPU 38.4%, MEM 71.2%, DISK 46%",
+        "detail": "主机资源未触发阈值，修复策略聚焦 nginx/upstream。"
       },
       {
         "name": "SOP 命中",
-        "value": "Nginx Service Recovery",
-        "detail": "KnowledgeBase.retrieve matched nginx/service/down keywords."
+        "value": "confidence=0.72",
+        "detail": "命中 Nginx 502 upstream recovery，并参考 staging 相似历史。"
       },
       {
-        "name": "风险门禁",
-        "value": "systemctl restart requires approval",
-        "detail": "CommandInterceptor detected service-impacting operation and attached simulated approval."
+        "name": "风险决策",
+        "value": "reload > restart",
+        "detail": "CommandInterceptor 拒绝 restart 候选，选择影响更小的 reload。"
       },
       {
-        "name": "命令结果",
-        "value": "exit_code=0",
-        "detail": "ShellExecutor returned SIMULATED: nginx restarted; verification active."
+        "name": "恢复证据",
+        "value": "200,200,200",
+        "detail": "reload 后连续三次 /healthz 探活成功。"
       },
       {
         "name": "历史沉淀",
-        "value": "rec-sim-nginx-critical-20260419",
-        "detail": "Problem, solution, steps and metadata persisted for reuse."
-      },
-      {
-        "name": "日志统计",
-        "value": "8 lines / 1 warning / 0 errors",
-        "detail": "All stages are visible in log replay with timestamps."
+        "value": "rec-20260420-edge-502-reload",
+        "detail": "记录 guarded_reload、命令结果和验证探针，供未来复用。"
       }
     ],
     "runbook_result": {
-      "selected": "Recover service nginx",
-      "reason": "service_name=nginx metadata matched SOP placeholders",
+      "selected": "Nginx 502 upstream recovery",
+      "reason": "process running + endpoint 502 + prior reload success",
       "commands": [
-        "journalctl -u nginx -n 100 --no-pager",
-        "systemctl restart nginx",
-        "systemctl is-active nginx"
+        "nginx -t",
+        "systemctl reload nginx",
+        "curl -fsS http://127.0.0.1:8080/healthz"
       ],
-      "final_state": "verified active"
+      "final_state": "HTTP 200 x3, error_rate_5m=0.3%"
     },
     "graph": {
       "nodes": [
         {
-          "id": "monitor",
-          "label": "Monitor",
+          "id": "endpoint",
+          "label": "/healthz Probe",
           "kind": "probe",
-          "status": "completed",
-          "x": 60,
+          "status": "502->200",
+          "x": 40,
           "y": 170
         },
         {
           "id": "inspector",
           "label": "Inspector",
           "kind": "agent",
-          "status": "completed",
-          "x": 210,
+          "status": "verified",
+          "x": 200,
           "y": 170
         },
         {
           "id": "coordinator",
           "label": "Coordinator",
           "kind": "agent",
-          "status": "completed",
-          "x": 380,
+          "status": "routed P2",
+          "x": 360,
           "y": 170
         },
         {
           "id": "remediator",
           "label": "Remediator",
           "kind": "agent",
-          "status": "completed",
-          "x": 560,
+          "status": "planned",
+          "x": 530,
           "y": 170
         },
         {
           "id": "knowledge",
-          "label": "SOP / History KB",
+          "label": "SOP + History",
           "kind": "knowledge",
-          "status": "completed",
-          "x": 560,
+          "status": "matched",
+          "x": 530,
           "y": 55
         },
         {
           "id": "security",
-          "label": "CommandInterceptor",
+          "label": "Command Guard",
           "kind": "security",
-          "status": "approved",
-          "x": 740,
+          "status": "reload approved",
+          "x": 700,
           "y": 170
         },
         {
           "id": "executor",
           "label": "ShellExecutor",
           "kind": "tool",
-          "status": "completed",
-          "x": 900,
+          "status": "exit 0",
+          "x": 870,
           "y": 170
         },
         {
           "id": "history",
-          "label": "History Record",
+          "label": "History Store",
           "kind": "storage",
           "status": "persisted",
-          "x": 900,
+          "x": 870,
           "y": 60
         }
       ],
       "edges": [
         {
-          "from": "monitor",
+          "from": "endpoint",
           "to": "inspector",
-          "label": "health report"
+          "label": "502 samples"
         },
         {
           "from": "inspector",
           "to": "coordinator",
-          "label": "critical anomaly"
+          "label": "P2 anomaly"
         },
         {
           "from": "coordinator",
@@ -749,32 +896,32 @@
         {
           "from": "remediator",
           "to": "knowledge",
-          "label": "retrieve SOP"
+          "label": "query SOP"
         },
         {
           "from": "knowledge",
           "to": "remediator",
-          "label": "matched plan"
+          "label": "runbook + prior record"
         },
         {
           "from": "remediator",
           "to": "security",
-          "label": "validate commands"
+          "label": "command candidates"
         },
         {
           "from": "security",
           "to": "executor",
-          "label": "approved execution"
+          "label": "reload approved"
         },
         {
           "from": "executor",
-          "to": "remediator",
-          "label": "exit=0 active"
+          "to": "inspector",
+          "label": "verify probes"
         },
         {
           "from": "remediator",
           "to": "history",
-          "label": "persist success"
+          "label": "persist result"
         }
       ]
     },
@@ -782,38 +929,38 @@
       {
         "name": "CPU",
         "status": "healthy",
-        "value": 31.87,
-        "detail": "load within threshold"
+        "value": 38.4,
+        "detail": "load1=3.07 / 8 cores"
       },
       {
         "name": "Memory",
         "status": "healthy",
-        "value": 76.33,
+        "value": 71.2,
         "detail": "below 90% threshold"
       },
       {
-        "name": "Disk",
+        "name": "Disk /var",
         "status": "healthy",
-        "value": 10,
-        "detail": "root mount healthy"
+        "value": 46,
+        "detail": "enough log space"
       },
       {
         "name": "Network",
         "status": "healthy",
         "value": 18,
-        "detail": "active interfaces"
+        "detail": "p95 connect 18ms"
       },
       {
-        "name": "nginx",
+        "name": "edge-nginx",
         "status": "recovered",
         "value": 100,
-        "detail": "failed then active"
+        "detail": "502 -> 200 after reload"
       },
       {
         "name": "redis",
         "status": "healthy",
         "value": 100,
-        "detail": "no intervention needed"
+        "detail": "ping 2ms, no action"
       }
     ]
   }

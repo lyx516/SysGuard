@@ -43,9 +43,11 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 			Severity string `json:"severity"`
 			Status   string `json:"status"`
 			Story    []struct {
-				Agent  string   `json:"agent"`
-				Action string   `json:"action"`
-				Steps  []string `json:"steps"`
+				Agent          string   `json:"agent"`
+				Action         string   `json:"action"`
+				StartedAt      string   `json:"started_at"`
+				DurationMillis int      `json:"duration_millis"`
+				Steps          []string `json:"steps"`
 			} `json:"story"`
 		} `json:"incident"`
 		Tools struct {
@@ -80,8 +82,8 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	if len(snapshot.Operations.Graph.Nodes) < 5 || len(snapshot.Operations.Graph.Edges) < 5 {
 		t.Fatalf("operations graph nodes=%d edges=%d, want at least 5 each", len(snapshot.Operations.Graph.Nodes), len(snapshot.Operations.Graph.Edges))
 	}
-	if snapshot.Incident.ID == "" || snapshot.Incident.Severity != "critical" || snapshot.Incident.Status != "resolved" {
-		t.Fatalf("incident summary is not a resolved critical incident: %#v", snapshot.Incident)
+	if snapshot.Incident.ID == "" || snapshot.Incident.Severity == "" || snapshot.Incident.Status != "resolved" {
+		t.Fatalf("incident summary is not a resolved realistic incident: %#v", snapshot.Incident)
 	}
 	if len(snapshot.Incident.Story) < 4 {
 		t.Fatalf("incident story steps = %d, want at least 4", len(snapshot.Incident.Story))
@@ -89,6 +91,9 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	for _, item := range snapshot.Incident.Story {
 		if item.Agent == "" || item.Action == "" || len(item.Steps) < 2 {
 			t.Fatalf("incident story item lacks concrete execution steps: %#v", item)
+		}
+		if item.StartedAt == "" || item.DurationMillis <= 0 {
+			t.Fatalf("incident story item should use real timestamps and durations for gantt rendering: %#v", item)
 		}
 	}
 	if len(snapshot.Tools.Recent) < 5 {
@@ -111,6 +116,11 @@ func TestGitHubPagesDemoDataShowsRichSimulatedIncident(t *testing.T) {
 	for _, needle := range []string{"处理甘特图", "Agent 信息传输图", "组件健康拓扑", "工具调用时序"} {
 		if !strings.Contains(htmlText, needle) {
 			t.Fatalf("demo html should include visualization %q", needle)
+		}
+	}
+	for _, fakePattern := range []string{"index * 14", "22 - Math.min"} {
+		if strings.Contains(htmlText, fakePattern) {
+			t.Fatalf("demo gantt should not use fake index-based timing pattern %q", fakePattern)
 		}
 	}
 }

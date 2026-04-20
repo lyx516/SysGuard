@@ -621,10 +621,19 @@
 
     function renderGantt() {
       const story = state.incident.story || [];
+      const starts = story.map((item) => new Date(item.started_at || item.time).getTime()).filter((value) => Number.isFinite(value));
+      const minStart = starts.length ? Math.min(...starts) : 0;
+      const maxEnd = story.reduce((max, item) => {
+        const start = new Date(item.started_at || item.time).getTime();
+        const end = Number.isFinite(start) ? start + Number(item.duration_millis || 1000) : max;
+        return Math.max(max, end);
+      }, minStart + 1000);
+      const span = Math.max(1000, maxEnd - minStart);
       const rows = story.map((item, index) => {
-        const start = Math.min(index * 14, 82);
-        const width = Math.max(10, 22 - Math.min(index, 5));
-        return '<div class="gantt-row row" data-detail="story" data-id="' + index + '"><strong>' + escapeHTML(item.agent) + '</strong><div class="gantt-track"><span class="gantt-bar" style="left:' + start + '%;width:' + width + '%"></span></div><span class="muted">' + escapeHTML(item.time) + '</span></div>';
+        const started = new Date(item.started_at || item.time).getTime();
+        const start = Number.isFinite(started) ? ((started - minStart) / span) * 100 : 0;
+        const width = Math.max(2, (Number(item.duration_millis || 1000) / span) * 100);
+        return '<div class="gantt-row row" data-detail="story" data-id="' + index + '"><strong>' + escapeHTML(item.agent) + '</strong><div class="gantt-track"><span class="gantt-bar" style="left:' + start.toFixed(2) + '%;width:' + Math.min(width, 100 - start).toFixed(2) + '%"></span></div><span class="muted">' + escapeHTML(item.time + ' / ' + item.duration_millis + 'ms') + '</span></div>';
       }).join('');
       $('gantt').innerHTML = rows || '<p class="muted">暂无处理步骤。</p>';
     }
