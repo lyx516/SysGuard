@@ -26,10 +26,13 @@ type Remediator struct {
 	interceptor *security.CommandInterceptor
 	obs         *observability.GlobalCallback
 	executor    *utils.ShellExecutor
+	verifier    RemediationVerifier
 	approvalCh  chan *ApprovalRequest
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
 }
+
+type RemediationVerifier func(ctx context.Context, anomaly monitor.Anomaly) error
 
 type ApprovalRequest struct {
 	Command    string
@@ -61,6 +64,10 @@ func NewRemediator(
 	}
 }
 
+func (r *Remediator) SetVerifier(verifier RemediationVerifier) {
+	r.verifier = verifier
+}
+
 func (r *Remediator) Remediate(ctx context.Context, anomaly monitor.Anomaly) error {
 	log.Printf("Remediator: Starting remediation for - %v", anomaly)
 
@@ -87,21 +94,37 @@ func (r *Remediator) Remediate(ctx context.Context, anomaly monitor.Anomaly) err
 		return nil
 	}
 
+	if r.cfg.Agents.Remediator.DryRun {
+		log.Printf("Remediator: Dry-run enabled; planned %d command(s) without execution", len(plan.Commands))
+		if err := r.recordHistory(ctx, anomaly, plan, false, map[string]string{"dry_run": "true"}); err != nil {
+			log.Printf("Remediator: Failed to persist dry-run history - %v", err)
+		}
+		r.obs.OnCallbackCompleted(callbackID, map[string]interface{}{
+			"anomaly":          anomaly,
+			"plan":             plan.Title,
+			"dry_run":          true,
+			"planned_commands": len(plan.Commands),
+		})
+		return nil
+	}
+
 	if err := r.executeRemediation(ctx, plan); err != nil {
 		r.obs.OnCallbackError(callbackID, err)
 		return err
 	}
 
-	record := &rag.HistoryRecord{
-		ProblemType: anomaly.Source,
-		Description: anomaly.Description,
-		Solution:    plan.Title,
-		Steps:       append([]string(nil), plan.Commands...),
-		Success:     true,
-		Timestamp:   time.Now().UTC(),
-		Metadata:    anomaly.Metadata,
+	if r.cfg.Agents.Remediator.VerifyAfterRemediation && r.verifier != nil {
+		if err := r.verifier(ctx, anomaly); err != nil {
+			verifyErr := fmt.Errorf("verification failed: %w", err)
+			if historyErr := r.recordHistory(ctx, anomaly, plan, false, map[string]string{"verify_error": err.Error()}); historyErr != nil {
+				log.Printf("Remediator: Failed to persist failed verification history - %v", historyErr)
+			}
+			r.obs.OnCallbackError(callbackID, verifyErr)
+			return verifyErr
+		}
 	}
-	if err := r.historyKB.AddRecord(ctx, record); err != nil {
+
+	if err := r.recordHistory(ctx, anomaly, plan, true, nil); err != nil {
 		log.Printf("Remediator: Failed to persist history - %v", err)
 	}
 
@@ -111,6 +134,27 @@ func (r *Remediator) Remediate(ctx context.Context, anomaly monitor.Anomaly) err
 	})
 	log.Println("Remediator: Remediation completed")
 	return nil
+}
+
+func (r *Remediator) recordHistory(ctx context.Context, anomaly monitor.Anomaly, plan *RemediationPlan, success bool, extra map[string]string) error {
+	metadata := make(map[string]string, len(anomaly.Metadata)+len(extra))
+	for k, v := range anomaly.Metadata {
+		metadata[k] = v
+	}
+	for k, v := range extra {
+		metadata[k] = v
+	}
+
+	record := &rag.HistoryRecord{
+		ProblemType: anomaly.Source,
+		Description: anomaly.Description,
+		Solution:    plan.Title,
+		Steps:       append([]string(nil), plan.Commands...),
+		Success:     success,
+		Timestamp:   time.Now().UTC(),
+		Metadata:    metadata,
+	}
+	return r.historyKB.AddRecord(ctx, record)
 }
 
 func (r *Remediator) Start(ctx context.Context) error {

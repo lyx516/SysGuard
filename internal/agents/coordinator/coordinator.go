@@ -46,6 +46,16 @@ func NewCoordinator(
 func (c *Coordinator) Start(ctx context.Context) error {
 	c.inspector = inspector.NewInspector(c.cfg, c.kb, c.monitor, c.obs)
 	c.remediator = remediator.NewRemediator(c.cfg, c.kb, c.historyKB, c.interceptor, c.obs)
+	c.remediator.SetVerifier(func(ctx context.Context, anomaly monitor.Anomaly) error {
+		report, err := c.monitor.CheckHealth(ctx)
+		if err != nil {
+			return err
+		}
+		if !report.IsHealthy {
+			return fmt.Errorf("health score %.2f below threshold after remediation", report.Score)
+		}
+		return nil
+	})
 	c.monitor.RegisterAnomalyHandler(c.handleAnomaly)
 
 	if err := c.remediator.Start(ctx); err != nil {
