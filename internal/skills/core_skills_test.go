@@ -65,6 +65,39 @@ func TestCoreSkillToolDefinitionsExposeSchemaAndPermission(t *testing.T) {
 	}
 }
 
+func TestCoreSkillToolDefinitionsExposeOperationalMetadata(t *testing.T) {
+	registry := NewSkillRegistry()
+	if err := RegisterCoreSkills(registry, CoreSkillDependencies{}); err != nil {
+		t.Fatalf("register core skills: %v", err)
+	}
+
+	defs, err := CoreSkillToolDefinitions(registry)
+	if err != nil {
+		t.Fatalf("tool definitions: %v", err)
+	}
+
+	byName := map[string]ToolDefinition{}
+	for _, def := range defs {
+		byName[def.Name] = def
+	}
+
+	health := byName["health-check"]
+	if health.Toolset != "host" || health.SideEffects || health.RequiresApproval {
+		t.Fatalf("unexpected health-check metadata: %#v", health)
+	}
+	if health.OutputBudget <= 0 || health.RedactionPolicy == "" {
+		t.Fatalf("health-check should expose output budget and redaction policy: %#v", health)
+	}
+
+	service := byName["service-management"]
+	if service.Toolset != "host" || !service.SideEffects || !service.RequiresApproval {
+		t.Fatalf("unexpected service-management metadata: %#v", service)
+	}
+	if len(service.AllowedPlatforms) == 0 {
+		t.Fatalf("service-management should declare allowed platforms")
+	}
+}
+
 func TestFileOperationSkillSupportsSafeReadStatListAndTail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")

@@ -31,9 +31,17 @@ func BuildTools(definitions []skills.ToolDefinition) []einotool.BaseTool {
 
 func (t *SkillTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
-		Name:        t.def.Name,
-		Desc:        t.def.Description,
-		Extra:       map[string]any{"permission": t.def.Permission},
+		Name: t.def.Name,
+		Desc: t.def.Description,
+		Extra: map[string]any{
+			"permission":        t.def.Permission,
+			"toolset":           t.def.Toolset,
+			"side_effects":      t.def.SideEffects,
+			"requires_approval": t.def.RequiresApproval,
+			"allowed_platforms": t.def.AllowedPlatforms,
+			"output_budget":     t.def.OutputBudget,
+			"redaction_policy":  t.def.RedactionPolicy,
+		},
 		ParamsOneOf: schema.NewParamsOneOfByParams(paramsFromSchema(t.def.Parameters)),
 	}, nil
 }

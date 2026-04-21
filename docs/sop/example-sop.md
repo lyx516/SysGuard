@@ -1,3 +1,24 @@
+---
+id: service-restart
+risk_level: privileged
+required_approval: true
+signals:
+  - service status is down
+  - process is not found
+diagnosis_steps:
+  - check service status
+  - inspect recent service logs
+execution_steps:
+  - stop the service only after approval
+  - start the service after prechecks pass
+verification_steps:
+  - verify service status
+  - inspect recent logs after restart
+rollback_steps:
+  - stop the faulty service
+  - restore previous configuration backup
+  - restart service and verify health
+---
 # 服务重启标准作业程序 (SOP)
 
 ## 目的

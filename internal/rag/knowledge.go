@@ -21,7 +21,19 @@ type Document struct {
 	ID       string
 	Title    string
 	Content  string
+	Runbook  RunbookMetadata
 	Metadata map[string]string
+}
+
+type RunbookMetadata struct {
+	ID                string   `json:"id,omitempty"`
+	RiskLevel         string   `json:"risk_level,omitempty"`
+	RequiredApproval  bool     `json:"required_approval,omitempty"`
+	Signals           []string `json:"signals,omitempty"`
+	DiagnosisSteps    []string `json:"diagnosis_steps,omitempty"`
+	ExecutionSteps    []string `json:"execution_steps,omitempty"`
+	VerificationSteps []string `json:"verification_steps,omitempty"`
+	RollbackSteps     []string `json:"rollback_steps,omitempty"`
 }
 
 type Citation struct {
@@ -36,6 +48,7 @@ type EvidenceChunk struct {
 	Content   string             `json:"content"`
 	Score     float64            `json:"score"`
 	Citation  Citation           `json:"citation"`
+	Runbook   RunbookMetadata    `json:"runbook,omitempty"`
 	Embedding map[string]float64 `json:"-"`
 }
 
@@ -73,10 +86,12 @@ func (kb *KnowledgeBase) loadDocuments(docPath string) error {
 			return err
 		}
 
+		body, runbook := splitFrontMatter(string(content))
 		doc := &Document{
 			ID:      filepath.Base(path),
-			Title:   extractTitle(string(content)),
-			Content: string(content),
+			Title:   extractTitle(body),
+			Content: body,
+			Runbook: runbook,
 			Metadata: map[string]string{
 				"path": path,
 			},
@@ -107,10 +122,71 @@ func (kb *KnowledgeBase) buildIndex() {
 					Path:       doc.Metadata["path"],
 					ChunkID:    chunkID,
 				},
+				Runbook:   doc.Runbook,
 				Embedding: sparseEmbedding(content),
 			})
 		}
 	}
+}
+
+func splitFrontMatter(content string) (string, RunbookMetadata) {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "---\n") {
+		return content, RunbookMetadata{}
+	}
+	rest := strings.TrimPrefix(trimmed, "---\n")
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return content, RunbookMetadata{}
+	}
+	metaBlock := rest[:end]
+	body := strings.TrimSpace(rest[end+len("\n---"):])
+	return body, parseRunbookFrontMatter(metaBlock)
+}
+
+func parseRunbookFrontMatter(block string) RunbookMetadata {
+	var meta RunbookMetadata
+	var currentList string
+	for _, raw := range strings.Split(block, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "- ") {
+			item := strings.TrimSpace(strings.TrimPrefix(line, "- "))
+			switch currentList {
+			case "signals":
+				meta.Signals = append(meta.Signals, item)
+			case "diagnosis_steps":
+				meta.DiagnosisSteps = append(meta.DiagnosisSteps, item)
+			case "execution_steps":
+				meta.ExecutionSteps = append(meta.ExecutionSteps, item)
+			case "verification_steps":
+				meta.VerificationSteps = append(meta.VerificationSteps, item)
+			case "rollback_steps":
+				meta.RollbackSteps = append(meta.RollbackSteps, item)
+			}
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		currentList = ""
+		switch key {
+		case "id":
+			meta.ID = value
+		case "risk_level":
+			meta.RiskLevel = value
+		case "required_approval":
+			meta.RequiredApproval = value == "true"
+		case "signals", "diagnosis_steps", "execution_steps", "verification_steps", "rollback_steps":
+			currentList = key
+		}
+	}
+	return meta
 }
 
 // Retrieve 根据查询检索相关文档

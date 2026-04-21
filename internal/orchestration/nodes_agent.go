@@ -80,9 +80,15 @@ func (r *Runtime) agentToolDefinitions(ctx context.Context, state *State) ([]ski
 
 func (r *Runtime) sopRetrievalTool(state *State) skills.ToolDefinition {
 	return skills.ToolDefinition{
-		Name:        "sop-retrieval",
-		Description: "Retrieve cited SOP evidence chunks for the current SysGuard anomaly.",
-		Permission:  skills.PermissionReadOnly,
+		Name:             "sop-retrieval",
+		Description:      "Retrieve cited SOP evidence chunks for the current SysGuard anomaly.",
+		Permission:       skills.PermissionReadOnly,
+		Toolset:          "knowledge",
+		SideEffects:      false,
+		RequiresApproval: false,
+		AllowedPlatforms: []string{"linux", "darwin"},
+		OutputBudget:     4000,
+		RedactionPolicy:  "return only relevant SOP chunks with source citations",
 		Parameters: skills.JSONSchema{
 			Type:     "object",
 			Required: []string{"query"},
@@ -114,9 +120,15 @@ func (r *Runtime) sopRetrievalTool(state *State) skills.ToolDefinition {
 
 func (r *Runtime) historySearchTool(state *State) skills.ToolDefinition {
 	return skills.ToolDefinition{
-		Name:        "history-search",
-		Description: "Search prior remediation records related to the current anomaly.",
-		Permission:  skills.PermissionReadOnly,
+		Name:             "history-search",
+		Description:      "Search prior remediation records related to the current anomaly.",
+		Permission:       skills.PermissionReadOnly,
+		Toolset:          "knowledge",
+		SideEffects:      false,
+		RequiresApproval: false,
+		AllowedPlatforms: []string{"linux", "darwin"},
+		OutputBudget:     4000,
+		RedactionPolicy:  "redact secrets and return only incident metadata relevant to the current anomaly",
 		Parameters: skills.JSONSchema{
 			Type:     "object",
 			Required: []string{"query"},
@@ -152,13 +164,35 @@ func agentSystemPrompt() string {
 
 func (r *Runtime) agentUserPrompt(state *State) string {
 	payload, _ := json.MarshalIndent(struct {
-		Anomaly *raglessAnomaly      `json:"anomaly"`
-		SOP     []rag.EvidenceChunk  `json:"sop_evidence"`
-		History []*rag.HistoryRecord `json:"history"`
+		Anomaly  *raglessAnomaly      `json:"anomaly"`
+		SOP      []rag.EvidenceChunk  `json:"sop_evidence"`
+		History  []*rag.HistoryRecord `json:"history"`
+		Policy   map[string]any       `json:"tool_policy"`
+		Contract map[string]any       `json:"evidence_contract"`
+		Final    map[string]string    `json:"final_response_schema"`
 	}{
 		Anomaly: anomalyPayload(state),
 		SOP:     state.Evidence.SOP,
 		History: state.Evidence.History,
+		Policy: map[string]any{
+			"read_only_first":       true,
+			"requires_approval":     "privileged or side-effecting tools require explicit approval and must respect dry-run mode",
+			"unknown_tools":         "never invent tools; use only registered SysGuard tools",
+			"tool_failure_handling": "treat success=false tool results as observations and continue diagnosis when possible",
+		},
+		Contract: map[string]any{
+			"must_use_citations": true,
+			"allowed_sources":    []string{"sop_evidence", "history", "tool_observations"},
+			"no_evidence_rule":   "if evidence is missing or irrelevant, say so and avoid unsupported remediation",
+		},
+		Final: map[string]string{
+			"diagnosis":     "root cause or current best hypothesis",
+			"evidence":      "SOP citations, history records, and tool observations used",
+			"actions":       "actions taken or proposed",
+			"verification":  "post-action health or checks to run",
+			"rollback":      "rollback steps if the action fails",
+			"residual_risk": "remaining uncertainty or risk",
+		},
 	}, "", "  ")
 	return "Analyze and handle this SysGuard graph run. Evidence is provided with citations and tools are available for further checks.\n" + string(payload)
 }

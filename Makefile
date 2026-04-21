@@ -1,10 +1,12 @@
 .PHONY: build run test clean deps fmt vet lint help
 
-# Binary name
+# Binary names
 BINARY_NAME=sysguard
+UI_BINARY_NAME=sysguard-ui
 
-# Main package path
+# Main package paths
 MAIN_PATH=./cmd/sysguard
+UI_PATH=./cmd/sysguard-ui
 
 # Build directory
 BUILD_DIR=./build
@@ -40,12 +42,16 @@ lint: ## Run golangci-lint
 	@which golangci-lint > /dev/null || (echo "golangci-lint not installed. Install from https://golangci-lint.run/" && exit 1)
 	golangci-lint run
 
-build: deps ## Build the binary
+build: deps ## Build daemon and UI binaries
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+	$(GOBUILD) -o $(BUILD_DIR)/$(UI_BINARY_NAME) $(UI_PATH)
 
 run: build ## Build and run the binary
 	$(BUILD_DIR)/$(BINARY_NAME)
+
+run-ui: build ## Build and run the UI
+	$(BUILD_DIR)/$(UI_BINARY_NAME)
 
 test: deps ## Run tests
 	$(GOTEST) -v -race -coverprofile=coverage.out ./...
@@ -62,5 +68,6 @@ clean: ## Clean build artifacts
 
 install: build ## Install the binary to GOPATH/bin
 	$(GOBUILD) -o $(GOPATH)/bin/$(BINARY_NAME) $(MAIN_PATH)
+	$(GOBUILD) -o $(GOPATH)/bin/$(UI_BINARY_NAME) $(UI_PATH)
 
 all: fmt vet lint build ## Run all checks and build

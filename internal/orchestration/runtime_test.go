@@ -3,6 +3,7 @@ package orchestration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,6 +105,30 @@ func TestRunStatePersistsFailedAgentRun(t *testing.T) {
 	}
 	if records[0].Metadata["graph_error"] != "agent failed" {
 		t.Fatalf("history graph_error = %q, want agent failed", records[0].Metadata["graph_error"])
+	}
+}
+
+func TestAgentUserPromptIncludesToolPolicyAndEvidenceContract(t *testing.T) {
+	runtime := &Runtime{}
+	state := NewState(TriggerPeriodic)
+	state.Anomaly = &monitor.Anomaly{
+		Severity:    "critical",
+		Description: "service down",
+		Source:      "monitor",
+		Metadata:    map[string]string{"service_name": "demo"},
+	}
+
+	prompt := runtime.agentUserPrompt(state)
+	for _, want := range []string{
+		"tool_policy",
+		"read_only_first",
+		"requires_approval",
+		"evidence_contract",
+		"final_response_schema",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
 	}
 }
 

@@ -14,11 +14,17 @@ const (
 type ToolHandler func(ctx context.Context, args map[string]interface{}) (ToolResult, error)
 
 type ToolDefinition struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Permission  string      `json:"permission"`
-	Parameters  JSONSchema  `json:"parameters"`
-	Handler     ToolHandler `json:"-"`
+	Name             string      `json:"name"`
+	Description      string      `json:"description"`
+	Permission       string      `json:"permission"`
+	Toolset          string      `json:"toolset"`
+	SideEffects      bool        `json:"side_effects"`
+	RequiresApproval bool        `json:"requires_approval"`
+	AllowedPlatforms []string    `json:"allowed_platforms,omitempty"`
+	OutputBudget     int         `json:"output_budget"`
+	RedactionPolicy  string      `json:"redaction_policy"`
+	Parameters       JSONSchema  `json:"parameters"`
+	Handler          ToolHandler `json:"-"`
 }
 
 type JSONSchema struct {
@@ -46,7 +52,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 	}
 
 	definitions := []ToolDefinition{
-		skillTool(registry, "log-analysis", PermissionReadOnly, JSONSchema{
+		skillTool(registry, "log-analysis", PermissionReadOnly, "observability", false, false, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"path"},
 			Properties: map[string]JSONSchemaProperty{
@@ -55,9 +61,9 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"keywords":   {Type: "array", Description: "Keywords to match"},
 			},
 		}),
-		skillTool(registry, "health-check", PermissionReadOnly, JSONSchema{Type: "object"}),
-		skillTool(registry, "metrics-collection", PermissionReadOnly, JSONSchema{Type: "object"}),
-		skillTool(registry, "network-diagnosis", PermissionReadOnly, JSONSchema{
+		skillTool(registry, "health-check", PermissionReadOnly, "host", false, false, []string{"linux", "darwin"}, JSONSchema{Type: "object"}),
+		skillTool(registry, "metrics-collection", PermissionReadOnly, "host", false, false, []string{"linux", "darwin"}, JSONSchema{Type: "object"}),
+		skillTool(registry, "network-diagnosis", PermissionReadOnly, "network", false, false, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"operation"},
 			Properties: map[string]JSONSchemaProperty{
@@ -67,7 +73,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"timeout":   {Type: "string"},
 			},
 		}),
-		skillTool(registry, "service-management", PermissionPrivileged, JSONSchema{
+		skillTool(registry, "service-management", PermissionPrivileged, "host", true, true, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"operation", "service"},
 			Properties: map[string]JSONSchemaProperty{
@@ -77,7 +83,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"allow_dangerous": {Type: "boolean", Description: "Requires explicit approval for state-changing operations"},
 			},
 		}),
-		skillTool(registry, "database-operation", PermissionReadOnly, JSONSchema{
+		skillTool(registry, "database-operation", PermissionReadOnly, "database", false, false, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"driver", "dsn", "operation"},
 			Properties: map[string]JSONSchemaProperty{
@@ -88,7 +94,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"limit":     {Type: "number"},
 			},
 		}),
-		skillTool(registry, "file-operation", PermissionReadOnly, JSONSchema{
+		skillTool(registry, "file-operation", PermissionReadOnly, "filesystem", false, false, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"operation", "path"},
 			Properties: map[string]JSONSchemaProperty{
@@ -97,7 +103,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"lines":     {Type: "number"},
 			},
 		}),
-		skillTool(registry, "alerting", PermissionReadOnly, JSONSchema{
+		skillTool(registry, "alerting", PermissionReadOnly, "workflow", false, false, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"title", "message"},
 			Properties: map[string]JSONSchemaProperty{
@@ -107,7 +113,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"source":   {Type: "string"},
 			},
 		}),
-		skillTool(registry, "notification", PermissionPrivileged, JSONSchema{
+		skillTool(registry, "notification", PermissionPrivileged, "workflow", true, true, []string{"linux", "darwin"}, JSONSchema{
 			Type:     "object",
 			Required: []string{"channel", "message"},
 			Properties: map[string]JSONSchemaProperty{
@@ -120,17 +126,23 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 	return definitions, nil
 }
 
-func skillTool(registry *SkillRegistry, name, permission string, schema JSONSchema) ToolDefinition {
+func skillTool(registry *SkillRegistry, name, permission, toolset string, sideEffects, requiresApproval bool, platforms []string, schema JSONSchema) ToolDefinition {
 	skill, _ := registry.Get(name)
 	description := name
 	if skill != nil {
 		description = skill.Description()
 	}
 	return ToolDefinition{
-		Name:        name,
-		Description: description,
-		Permission:  permission,
-		Parameters:  schema,
+		Name:             name,
+		Description:      description,
+		Permission:       permission,
+		Toolset:          toolset,
+		SideEffects:      sideEffects,
+		RequiresApproval: requiresApproval,
+		AllowedPlatforms: append([]string(nil), platforms...),
+		OutputBudget:     4000,
+		RedactionPolicy:  "redact secrets, tokens, credentials, private keys, and environment values before exposing tool output to the model",
+		Parameters:       schema,
 		Handler: func(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 			out, err := registry.Execute(ctx, name, &SkillInput{Params: args})
 			if err != nil {
