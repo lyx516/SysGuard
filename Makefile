@@ -1,4 +1,4 @@
-.PHONY: build run test clean deps fmt vet lint docker-build docker-run help
+.PHONY: build run test clean deps fmt vet lint help
 
 # Binary name
 BINARY_NAME=sysguard
@@ -59,12 +59,6 @@ clean: ## Clean build artifacts
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 	rm -f coverage.out coverage.html
-
-docker-build: ## Build Docker image
-	docker build -t sysguard:latest .
-
-docker-run: ## Run Docker container
-	docker run -it --rm sysguard:latest
 
 install: build ## Install the binary to GOPATH/bin
 	$(GOBUILD) -o $(GOPATH)/bin/$(BINARY_NAME) $(MAIN_PATH)

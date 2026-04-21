@@ -20,9 +20,8 @@ security:
 services:
   names:
     - nginx
-agents:
-  remediator:
-    command_timeout: 90s
+execution:
+  command_timeout: 90s
 `
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -45,8 +44,8 @@ agents:
 	if len(cfg.Services) != 1 || cfg.Services[0] != "nginx" {
 		t.Fatalf("unexpected services: %#v", cfg.Services)
 	}
-	if cfg.Agents.Remediator.CommandTimeout.String() != "1m30s" {
-		t.Fatalf("unexpected timeout: %s", cfg.Agents.Remediator.CommandTimeout)
+	if cfg.Execution.CommandTimeout.String() != "1m30s" {
+		t.Fatalf("unexpected timeout: %s", cfg.Execution.CommandTimeout)
 	}
 }
 
@@ -54,10 +53,9 @@ func TestLoadParsesProductionGuardrails(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `
-agents:
-  remediator:
-    dry_run: true
-    verify_after_remediation: true
+execution:
+  dry_run: true
+  verify_after_remediation: true
 ui:
   addr: "127.0.0.1:9090"
   auth_token: "local-token"
@@ -71,10 +69,10 @@ ui:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if !cfg.Agents.Remediator.DryRun {
-		t.Fatal("expected remediator dry-run mode to be enabled")
+	if !cfg.Execution.DryRun {
+		t.Fatal("expected execution dry-run mode to be enabled")
 	}
-	if !cfg.Agents.Remediator.VerifyAfterRemediation {
+	if !cfg.Execution.VerifyAfterRemediation {
 		t.Fatal("expected post-remediation verification to be enabled")
 	}
 	if cfg.UI.Addr != "127.0.0.1:9090" {
@@ -136,5 +134,33 @@ ai:
 	}
 	if cfg.AI.Temperature != 0.2 {
 		t.Fatalf("temperature = %v, want 0.2", cfg.AI.Temperature)
+	}
+}
+
+func TestLoadParsesInlineAIAPIKey(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	content := `
+ai:
+  enabled: true
+  provider: openai
+  model: Qwen/Qwen3.6-35B-A3B
+  api_key: direct-secret
+  base_url: "https://api.siliconflow.cn/v1"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.AI.APIKey != "direct-secret" {
+		t.Fatalf("api key = %q, want direct-secret", cfg.AI.APIKey)
+	}
+	if cfg.AI.BaseURL != "https://api.siliconflow.cn/v1" {
+		t.Fatalf("base url = %q", cfg.AI.BaseURL)
 	}
 }

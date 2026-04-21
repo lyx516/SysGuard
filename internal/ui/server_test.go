@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/sysguard/sysguard/internal/config"
+	"github.com/sysguard/sysguard/internal/monitor"
 )
 
 func TestServerExposesDashboardResourceEndpoints(t *testing.T) {
@@ -87,5 +90,63 @@ func TestServerRejectsPostOnReadOnlyEndpoints(t *testing.T) {
 	server.mux.ServeHTTP(res, req)
 	if res.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", res.Code)
+	}
+}
+
+type checkTriggeringMonitor struct {
+	checks   int
+	notifies int
+}
+
+func (m *checkTriggeringMonitor) CheckHealth(ctx context.Context) (*monitor.HealthReport, error) {
+	m.checks++
+	return &monitor.HealthReport{
+		Timestamp: time.Now().UTC(),
+		IsHealthy: false,
+		Score:     40,
+		Components: map[string]monitor.ComponentStatus{
+			"services": {
+				Name:    "services",
+				Status:  "down",
+				Message: "service down",
+				Metrics: map[string]interface{}{"failed_service": "nginx"},
+			},
+		},
+	}, nil
+}
+
+func (m *checkTriggeringMonitor) BuildAnomaly(report *monitor.HealthReport) monitor.Anomaly {
+	return monitor.Anomaly{
+		Timestamp:   report.Timestamp,
+		Severity:    "critical",
+		Description: "service down",
+		Source:      "monitor",
+	}
+}
+
+func (m *checkTriggeringMonitor) NotifyAnomaly(ctx context.Context, anomaly monitor.Anomaly) error {
+	m.notifies++
+	return nil
+}
+
+func TestServerCheckEndpointTriggersImmediateHealthCheckAndAnomalyFlow(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	mon := &checkTriggeringMonitor{}
+	collector := NewCollector(cfg, mon, nil, nil)
+	server := NewServer(":0", collector)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/check", nil)
+	res := httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", res.Code, res.Body.String())
+	}
+	if mon.checks == 0 {
+		t.Fatal("expected /api/check to run health checks immediately")
+	}
+	if mon.notifies != 1 {
+		t.Fatalf("notify count = %d, want 1", mon.notifies)
 	}
 }

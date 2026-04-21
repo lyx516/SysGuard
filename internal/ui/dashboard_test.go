@@ -26,14 +26,14 @@ func TestCollectorBuildsOperationsDashboardSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGlobalCallback() error = %v", err)
 	}
-	inspectorID := obs.OnCallbackStarted("Inspector.healthCheck")
+	inspectorID := obs.OnCallbackStarted("Eino.Lambda.inspect")
 	obs.OnCallbackCompleted(inspectorID, map[string]interface{}{"score": 96.5})
-	remediatorID := obs.OnCallbackStarted("Remediator.remediate")
+	remediatorID := obs.OnCallbackStarted("Eino.Tools.service-management")
 	obs.OnCallbackError(remediatorID, assertErr("restart failed"))
 
 	if err := os.WriteFile(logPath, []byte(
-		"2026/04/19 09:00:00 Inspector: Health check completed - score=96.50 healthy=true\n"+
-			"2026/04/19 09:01:00 Remediator: Command succeeded cmd=\"systemctl restart nginx\" exit=0 duration=1s\n"+
+		"2026/04/19 09:00:00 Orchestration: inspect completed - score=96.50 healthy=true\n"+
+			"2026/04/19 09:01:00 Eino.Tools: service-management completed operation=restart service=nginx\n"+
 			"2026/04/19 09:02:00 ERROR failed to notify anomaly\n",
 	), 0o644); err != nil {
 		t.Fatalf("WriteFile(log) error = %v", err)
@@ -73,14 +73,14 @@ func TestCollectorBuildsOperationsDashboardSnapshot(t *testing.T) {
 	if snapshot.System.ManagedServices != 2 {
 		t.Fatalf("ManagedServices = %d, want 2", snapshot.System.ManagedServices)
 	}
-	if len(snapshot.Agents) != 3 {
-		t.Fatalf("len(Agents) = %d, want 3", len(snapshot.Agents))
+	if len(snapshot.Agents) != 4 {
+		t.Fatalf("len(Agents) = %d, want 4", len(snapshot.Agents))
 	}
-	if snapshot.AgentByName("Inspector").Status != "healthy" {
-		t.Fatalf("Inspector status = %q, want healthy", snapshot.AgentByName("Inspector").Status)
+	if snapshot.AgentByName("Eino.Lambda").Status != "healthy" {
+		t.Fatalf("Eino.Lambda status = %q, want healthy", snapshot.AgentByName("Eino.Lambda").Status)
 	}
-	if snapshot.AgentByName("Remediator").Status != "error" {
-		t.Fatalf("Remediator status = %q, want error", snapshot.AgentByName("Remediator").Status)
+	if snapshot.AgentByName("Eino.Tools").Status != "error" {
+		t.Fatalf("Eino.Tools status = %q, want error", snapshot.AgentByName("Eino.Tools").Status)
 	}
 	if snapshot.Tools.Total != 2 || snapshot.Tools.Errors != 1 {
 		t.Fatalf("tool summary = total %d errors %d, want total 2 errors 1", snapshot.Tools.Total, snapshot.Tools.Errors)
@@ -102,10 +102,10 @@ func TestCollectorBuildsToolSummaryFromTraceLog(t *testing.T) {
 	dir := t.TempDir()
 	tracePath := filepath.Join(dir, "trace.log")
 	if err := os.WriteFile(tracePath, []byte(
-		`{"timestamp":"2026-04-19T09:00:00Z","type":"callback_started","payload":{"id":"Inspector.healthCheck-1","name":"Inspector.healthCheck"}}`+"\n"+
-			`{"timestamp":"2026-04-19T09:00:01Z","type":"callback_completed","payload":{"id":"Inspector.healthCheck-1","data":{"score":92.4}}}`+"\n"+
-			`{"timestamp":"2026-04-19T09:01:00Z","type":"callback_started","payload":{"id":"Remediator.remediate-2","name":"Remediator.remediate"}}`+"\n"+
-			`{"timestamp":"2026-04-19T09:01:02Z","type":"callback_error","payload":{"id":"Remediator.remediate-2","error":"command denied"}}`+"\n",
+		`{"timestamp":"2026-04-19T09:00:00Z","type":"callback_started","payload":{"id":"Eino.Lambda.inspect-1","name":"Eino.Lambda.inspect"}}`+"\n"+
+			`{"timestamp":"2026-04-19T09:00:01Z","type":"callback_completed","payload":{"id":"Eino.Lambda.inspect-1","data":{"score":92.4}}}`+"\n"+
+			`{"timestamp":"2026-04-19T09:01:00Z","type":"callback_started","payload":{"id":"Eino.Tools.service-management-2","name":"Eino.Tools.service-management"}}`+"\n"+
+			`{"timestamp":"2026-04-19T09:01:02Z","type":"callback_error","payload":{"id":"Eino.Tools.service-management-2","error":"command denied"}}`+"\n",
 	), 0o644); err != nil {
 		t.Fatalf("WriteFile(trace) error = %v", err)
 	}
@@ -122,11 +122,11 @@ func TestCollectorBuildsToolSummaryFromTraceLog(t *testing.T) {
 	if snapshot.Tools.Total != 2 || snapshot.Tools.Errors != 1 {
 		t.Fatalf("tool summary = total %d errors %d, want total 2 errors 1", snapshot.Tools.Total, snapshot.Tools.Errors)
 	}
-	if snapshot.AgentByName("Inspector").Runs != 1 {
-		t.Fatalf("Inspector runs = %d, want 1", snapshot.AgentByName("Inspector").Runs)
+	if snapshot.AgentByName("Eino.Lambda").Runs != 1 {
+		t.Fatalf("Eino.Lambda runs = %d, want 1", snapshot.AgentByName("Eino.Lambda").Runs)
 	}
-	if snapshot.AgentByName("Remediator").Status != "error" {
-		t.Fatalf("Remediator status = %q, want error", snapshot.AgentByName("Remediator").Status)
+	if snapshot.AgentByName("Eino.Tools").Status != "error" {
+		t.Fatalf("Eino.Tools status = %q, want error", snapshot.AgentByName("Eino.Tools").Status)
 	}
 	data, err := json.Marshal(snapshot)
 	if err != nil {
@@ -157,8 +157,8 @@ func TestCollectorIncludesTraceDetailsAndDocumentLibrary(t *testing.T) {
 		t.Fatalf("WriteFile(skill) error = %v", err)
 	}
 	if err := os.WriteFile(tracePath, []byte(
-		`{"timestamp":"2026-04-19T09:00:00Z","type":"callback_started","payload":{"id":"Inspector.healthCheck-1","name":"Inspector.healthCheck"}}`+"\n"+
-			`{"timestamp":"2026-04-19T09:00:01Z","type":"callback_completed","payload":{"id":"Inspector.healthCheck-1","data":{"score":92.4,"component":"cpu"}}}`+"\n",
+		`{"timestamp":"2026-04-19T09:00:00Z","type":"callback_started","payload":{"id":"Eino.Lambda.inspect-1","name":"Eino.Lambda.inspect"}}`+"\n"+
+			`{"timestamp":"2026-04-19T09:00:01Z","type":"callback_completed","payload":{"id":"Eino.Lambda.inspect-1","data":{"score":92.4,"component":"cpu"}}}`+"\n",
 	), 0o644); err != nil {
 		t.Fatalf("WriteFile(trace) error = %v", err)
 	}
@@ -194,6 +194,75 @@ func TestCollectorIncludesTraceDetailsAndDocumentLibrary(t *testing.T) {
 	}
 	if snapshot.Documents.Items[0].Title == "" || snapshot.Documents.Items[0].Preview == "" {
 		t.Fatalf("document title and preview should be populated: %#v", snapshot.Documents.Items[0])
+	}
+}
+
+func TestCollectorFiltersOldTraceLogsAndHistoryBeforeLatestDaemonStart(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace.log")
+	logPath := filepath.Join(dir, "sysguard.log")
+	historyPath := filepath.Join(dir, "history.json")
+
+	if err := os.WriteFile(tracePath, []byte(
+		`{"timestamp":"2026-04-19T08:00:00Z","type":"callback_started","payload":{"id":"Eino.Lambda.inspect-old","name":"Eino.Lambda.inspect"}}`+"\n"+
+			`{"timestamp":"2026-04-19T08:00:01Z","type":"callback_completed","payload":{"id":"Eino.Lambda.inspect-old","data":{"score":90}}}`+"\n"+
+			`{"timestamp":"2026-04-21T01:00:00Z","type":"callback_started","payload":{"id":"Eino.Lambda.inspect-new","name":"Eino.Lambda.inspect"}}`+"\n"+
+			`{"timestamp":"2026-04-21T01:00:01Z","type":"callback_completed","payload":{"id":"Eino.Lambda.inspect-new","data":{"score":100}}}`+"\n",
+	), 0o644); err != nil {
+		t.Fatalf("write trace: %v", err)
+	}
+	if err := os.WriteFile(logPath, []byte(
+		"2026/04/19 08:00:00.000000 Orchestration: old run\n"+
+			"2026/04/21 01:00:00.000000 SysGuard started successfully\n"+
+			"2026/04/21 01:00:01.000000 Orchestration: inspect completed - score=100.00 healthy=true\n",
+	), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	historyKB, err := rag.NewHistoryKnowledgeBase(historyPath)
+	if err != nil {
+		t.Fatalf("new history: %v", err)
+	}
+	if err := historyKB.AddRecord(context.Background(), &rag.HistoryRecord{
+		ID:          "old",
+		Description: "old incident",
+		Solution:    "old solution",
+		Success:     true,
+		Timestamp:   time.Date(2026, 4, 19, 8, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("add old history: %v", err)
+	}
+	if err := historyKB.AddRecord(context.Background(), &rag.HistoryRecord{
+		ID:          "new",
+		Description: "new incident",
+		Solution:    "new solution",
+		Success:     true,
+		Timestamp:   time.Date(2026, 4, 21, 1, 0, 2, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("add new history: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.Observability.TraceLogPath = tracePath
+	cfg.Storage.LogPath = logPath
+	cfg.Storage.HistoryPath = historyPath
+
+	collector := NewCollector(cfg, nil, nil, historyKB)
+	snapshot, err := collector.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	if snapshot.Tools.Total != 1 {
+		t.Fatalf("tools total = %d, want 1 current-run tool", snapshot.Tools.Total)
+	}
+	if snapshot.Logs.Total != 2 {
+		t.Fatalf("logs total = %d, want 2 current-run logs", snapshot.Logs.Total)
+	}
+	if snapshot.History.Total != 1 || snapshot.History.Recent[0].ID != "new" {
+		t.Fatalf("history = %#v, want only current-run history", snapshot.History)
 	}
 }
 

@@ -1,4 +1,7 @@
-# SysGuard Configuration
+# SysGuard Configuration Example
+#
+# Copy this file to configs/config.yaml before running:
+#   cp configs/config.example.yaml configs/config.yaml
 
 # 监控配置
 monitor:
@@ -19,17 +22,18 @@ log_analysis:
     - exception
     - timeout
 
-# Agent 配置
-agents:
-  inspector:
-    interval: 30s
-  remediator:
-    auto_approve_safe_commands: true
-    command_timeout: 2m
-    allow_interactive_input: true
-    dry_run: true
-    verify_after_remediation: true
-    max_retries: 3
+# Eino graph 编排配置
+orchestration:
+  interval: 30s
+  anomaly_cooldown: 30s
+
+# 工具执行配置
+execution:
+  auto_approve_safe_commands: true
+  command_timeout: 2m
+  allow_interactive_input: true
+  dry_run: true
+  verify_after_remediation: true
 
 # 安全配置
 security:
@@ -72,16 +76,16 @@ observability:
 # UI 配置
 ui:
   addr: "127.0.0.1:8080"
-  # 生产环境建议通过 SYSGUARD_UI_AUTH_TOKEN 注入
+  # 生产环境建议通过环境变量注入
   auth_token: ""
 
 # AI 配置
-# 当前版本先提供配置面，后续可在 Remediator 中启用模型辅助生成修复计划。
-# API Key 不建议写入配置文件，请通过 api_key_env 指向的环境变量注入。
+# 推荐通过 api_key_env 指向的环境变量注入 API Key。
 ai:
   enabled: false
   provider: openai
   model: gpt-4.1-mini
+  api_key: ""
   api_key_env: OPENAI_API_KEY
   base_url: "https://api.openai.com/v1"
   timeout: 30s

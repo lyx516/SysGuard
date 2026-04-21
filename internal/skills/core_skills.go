@@ -55,7 +55,6 @@ func RegisterCoreSkills(registry *SkillRegistry, deps CoreSkillDependencies) err
 		NewAlertingSkill(),
 		NewMetricsCollectionSkill(mon),
 		NewNetworkDiagnosisSkill(),
-		NewContainerManagementSkill(cfg, interceptor),
 		NewDatabaseOperationSkill(),
 		NewFileOperationSkill(),
 		NewNotificationSkill(deps.HTTPClient),
@@ -131,8 +130,8 @@ type ServiceManagementSkill struct {
 
 func NewServiceManagementSkill(cfg *config.Config, interceptor *security.CommandInterceptor) *ServiceManagementSkill {
 	timeout := 2 * time.Minute
-	if cfg != nil && cfg.Agents.Remediator.CommandTimeout > 0 {
-		timeout = cfg.Agents.Remediator.CommandTimeout
+	if cfg != nil && cfg.Execution.CommandTimeout > 0 {
+		timeout = cfg.Execution.CommandTimeout
 	}
 	return &ServiceManagementSkill{
 		cfg:         cfg,
@@ -328,53 +327,6 @@ func (s *NetworkDiagnosisSkill) Execute(ctx context.Context, input *SkillInput) 
 	default:
 		return nil, fmt.Errorf("unsupported network operation %q", operation)
 	}
-}
-
-type ContainerManagementSkill struct {
-	interceptor *security.CommandInterceptor
-	executor    *utils.ShellExecutor
-}
-
-func NewContainerManagementSkill(cfg *config.Config, interceptor *security.CommandInterceptor) *ContainerManagementSkill {
-	timeout := 2 * time.Minute
-	if cfg != nil && cfg.Agents.Remediator.CommandTimeout > 0 {
-		timeout = cfg.Agents.Remediator.CommandTimeout
-	}
-	return &ContainerManagementSkill{
-		interceptor: interceptor,
-		executor:    utils.NewShellExecutor(timeout),
-	}
-}
-
-func (s *ContainerManagementSkill) Name() string { return "container-management" }
-
-func (s *ContainerManagementSkill) Description() string {
-	return "Manage Docker containers with ps, inspect, logs, restart, stop, and start operations"
-}
-
-func (s *ContainerManagementSkill) Execute(ctx context.Context, input *SkillInput) (*SkillOutput, error) {
-	params := normalizeParams(input)
-	operation := stringParam(params, "operation", "ps")
-	container := strings.TrimSpace(stringParam(params, "container", ""))
-
-	var command string
-	switch operation {
-	case "ps":
-		command = "docker ps"
-	case "inspect", "logs", "restart", "stop", "start":
-		if container == "" {
-			return nil, fmt.Errorf("container is required for %q", operation)
-		}
-		command = fmt.Sprintf("docker %s %s", operation, container)
-	default:
-		return nil, fmt.Errorf("unsupported container operation %q", operation)
-	}
-
-	result, err := executeManagedCommand(ctx, s.executor, s.interceptor, command, boolParam(params, "allow_dangerous", false))
-	if err != nil {
-		return nil, err
-	}
-	return successOutput(result), nil
 }
 
 type DatabaseOperationSkill struct{}

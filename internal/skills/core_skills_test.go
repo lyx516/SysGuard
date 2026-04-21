@@ -25,7 +25,6 @@ func TestRegisterCoreSkillsRegistersAllSkills(t *testing.T) {
 		"alerting",
 		"metrics-collection",
 		"network-diagnosis",
-		"container-management",
 		"database-operation",
 		"file-operation",
 		"notification",
@@ -38,6 +37,31 @@ func TestRegisterCoreSkillsRegistersAllSkills(t *testing.T) {
 		if skill.Description() == "" {
 			t.Fatalf("expected skill %q to have a description", name)
 		}
+	}
+}
+
+func TestCoreSkillToolDefinitionsExposeSchemaAndPermission(t *testing.T) {
+	registry := NewSkillRegistry()
+	if err := RegisterCoreSkills(registry, CoreSkillDependencies{}); err != nil {
+		t.Fatalf("register core skills: %v", err)
+	}
+
+	defs, err := CoreSkillToolDefinitions(registry)
+	if err != nil {
+		t.Fatalf("tool definitions: %v", err)
+	}
+	byName := map[string]string{}
+	for _, def := range defs {
+		if def.Parameters.Type != "object" {
+			t.Fatalf("%s schema type = %q, want object", def.Name, def.Parameters.Type)
+		}
+		byName[def.Name] = def.Permission
+	}
+	if byName["health-check"] != "read_only" {
+		t.Fatalf("health-check permission = %q", byName["health-check"])
+	}
+	if byName["service-management"] != "privileged" {
+		t.Fatalf("service-management permission = %q", byName["service-management"])
 	}
 }
 

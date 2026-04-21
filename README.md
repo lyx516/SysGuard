@@ -1,173 +1,210 @@
 # SysGuard
 
-智能自动化运维与诊断 Agent，面向“持续巡检 -> 异常发现 -> 安全修复 -> 历史沉淀”这条闭环。
+SysGuard 是一个基于 Go 与 CloudWeGo Eino 的本地运维 Agent 框架。它把主机巡检、异常检测、SOP/RAG 检索、LLM tool-use、执行安全、结果验证和历史沉淀放进同一张 Eino graph 中，用来构建可观测、可审计、可逐步放权的 AI 运维闭环。
 
-<div align="center">
+> 当前项目处于 production hardening 阶段。默认配置偏保守：AI 关闭、修复 dry-run、危险操作需要审批。本项目适合先在本地或测试机器观察运行，再逐步接入真实服务和执行权限。
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8)
-![Status](https://img.shields.io/badge/status-production--hardening-0b7285)
-![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-007a7a)
+![Eino](https://img.shields.io/badge/Agent-Eino-3b82f6)
+![Status](https://img.shields.io/badge/status-production%20hardening-0f766e)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-[在线演示](https://lyx516.github.io/SysGuard/demo/) • [快速开始](#快速开始) • [运行机制](#运行机制) • [配置说明](#配置说明) • [部署建议](#部署建议)
+## 目录
 
-### [打开 GitHub Pages 交互式演示看板](https://lyx516.github.io/SysGuard/demo/)
+- [项目定位](#项目定位)
+- [核心能力](#核心能力)
+- [架构总览](#架构总览)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [AI 与工具调用](#ai-与工具调用)
+- [执行安全](#执行安全)
+- [SOP/RAG 与历史记忆](#soprag-与历史记忆)
+- [Dashboard 与 API](#dashboard-与-api)
+- [测试与验证](#测试与验证)
+- [生产运行建议](#生产运行建议)
+- [项目结构](#项目结构)
+- [开发路线](#开发路线)
 
-用预置模拟事故展示 `Inspector -> Coordinator -> Remediator -> CommandInterceptor -> ShellExecutor` 的完整异常处理链路。
+## 项目定位
 
-</div>
+SysGuard 不是一个会直接“放飞自我”的自动修复脚本。它的设计目标是成为一个可靠的运维 Agent 骨架：
 
-## 项目简介
+1. 持续巡检本机 CPU、内存、磁盘、网络和受管服务。
+2. 将异常转换成结构化事件。
+3. 基于本地 SOP 和历史记录检索证据。
+4. 在 Eino ReAct agent 中让模型通过受控工具诊断和处理。
+5. 对命令执行做 allowlist、参数校验、权限分级、审批和审计。
+6. 修复后重新巡检验证。
+7. 把 trace、工具调用、历史结果留存下来，供 UI、排障和下一次推理复用。
 
-SysGuard 是一个用 Go 编写的运维守护进程。它会定期检查主机和受管服务的健康状态，当检测到异常时：
+当 `ai.enabled=false` 时，SysGuard 只做巡检、告警、trace 和历史记录，不伪装成 AI 自动修复。当 `ai.enabled=true` 时，才进入 LLM agent 路径。
 
-1. 生成结构化异常信息。
-2. 从本地 SOP 知识库中检索相关修复文档。
-3. 优先复用历史成功修复方案。
-4. 在 dry-run、审批和危险命令规则保护下生成或执行修复计划。
-5. 修复后重新巡检验证，并记录 trace 和历史结果，供后续复用与审计。
+## 核心能力
 
-当前版本已经实现了可运行的主链路，并补充了生产接入所需的基础护栏。默认推荐以观察模式运行，再逐步开放审批修复。
+- **Eino 单图编排**
+  `internal/orchestration` 使用一张 graph 串起 `inspect -> detect_anomaly -> route_mode -> retrieve_evidence -> agent_react -> verify_result -> persist_result`。
 
-## 当前能力
+- **真实本地巡检**
+  支持 CPU load、内存、磁盘、网络接口和受管服务状态检查。任一组件 `down` 或 `critical` 会直接判定为不健康，避免默认健康阈值漏报服务宕机。
 
-- 双 Agent 协同：
-  `Inspector` 负责定时巡检，`Remediator` 负责修复，`Coordinator` 负责调度。
-- 真实健康检查：
-  支持 CPU、内存、磁盘、网络和受管服务状态检查，不再使用固定模拟数据。
-- SOP/RAG 检索：
-  从 `docs/sop` 目录加载 Markdown 运维文档，并基于关键词召回相关 SOP。
-- AI 配置面：
-  支持配置 provider、model、base URL、超时、token 数和 API Key 环境变量；当前默认关闭，后续可用于模型辅助生成修复计划。
-- 历史知识库：
-  修复计划和验证结果会写入本地历史记录，后续相似故障优先复用历史步骤。
-- 安全执行：
-  默认 dry-run、危险命令拦截、交互式人工审批、审批超时自动拒绝。
-- 可观测性：
-  trace 事件和运行日志落盘，trace 会脱敏常见敏感字段，便于审计和排障。
-- 监控看板：
-  提供本机默认监听的 UI/API/SSE/A2UI 看板，并支持 Bearer token 保护。
-- 优雅停止：
-  支持 `SIGINT` / `SIGTERM`，可安全关闭巡检和修复流程。
+- **OpenAI-compatible LLM 接入**
+  可配置 OpenAI、硅基流动或其他兼容 `/v1/chat/completions` 的模型服务。
 
-## 在线演示
+- **标准 ReAct/tool-use 循环**
+  模型通过 Eino ReAct agent 输出 tool call，系统执行注册工具，将 observation 回填，再继续推理直到 final 或达到 step 限制。
 
-SysGuard 提供了 GitHub Pages 静态演示版，用预置模拟事故展示完整异常处理链路，不需要运行本机 daemon：
+- **LLM 可调用工具注册**
+  `internal/skills` 中的核心能力会注册成工具，带 JSON schema、参数校验和权限等级。
 
-- [GitHub Pages 交互式演示](https://lyx516.github.io/SysGuard/demo/)
-- [模拟事故数据](docs/demo/data/snapshot.json)
+- **工具失败可恢复**
+  工具参数错误、平台不支持、命令失败会作为 `success=false` observation 返回给模型，而不是直接打断整轮 graph。
 
-演示内容包括：
+- **SOP/RAG 证据约束**
+  本地 Markdown SOP 会被切成 chunk，生成稀疏 embedding，检索后带 citation 提供给模型。
 
-- `Inspector` 发现 nginx 不可用并生成 critical anomaly。
-- `Coordinator` 将异常路由给 `Remediator`。
-- `Remediator` 检索 SOP、生成恢复计划并沉淀历史记录。
-- `CommandInterceptor` 展示危险命令审批门禁。
-- `ShellExecutor` 展示模拟命令执行、输出和 trace payload。
-- 看板可点击查看 Agent 步骤、工具调用详情、SOP/技能文档、日志回放和修复历史。
+- **历史记忆**
+  处理结果写入本地 history。后续相似异常可检索历史记录，减少重复摸索。
 
-如果你 fork 或部署本项目，在 GitHub 仓库的 **Settings -> Pages** 中选择 `main` 分支的 `/docs` 目录，即可发布：
+- **安全执行**
+  默认 dry-run，命令走安全策略、危险命令识别、参数校验、审批和审计路径。
 
-```text
-https://<your-github-user>.github.io/SysGuard/demo/
+- **Dashboard 与 API**
+  `sysguard-ui` 提供本地看板、快照 API、手动检查接口和 SSE 数据流。
+
+- **评测与回归测试**
+  测试覆盖配置加载、RAG 检索、工具 schema、安全策略、Eino callback、orchestration 路由、UI snapshot 等关键路径。
+
+## 架构总览
+
+```mermaid
+flowchart TD
+    A["Timer or /api/check"] --> B["inspect: health report"]
+    B --> C["detect_anomaly"]
+    C --> D["route_mode"]
+    D -->|healthy| H["persist_result / finish"]
+    D -->|cooldown| H
+    D -->|AI disabled| I["alert-only path"]
+    I --> H
+    D -->|AI enabled| E["retrieve_evidence"]
+    E --> F["agent_react: Eino ReAct"]
+    F --> G["verify_result"]
+    G --> H
+
+    F --> T["registered tools"]
+    T --> F
+
+    subgraph Evidence
+      KB["SOP chunks + citations"]
+      Hist["history records"]
+    end
+
+    E --> KB
+    E --> Hist
 ```
 
-## 运行机制
-
-### 核心流程
-
-```text
-Inspector 定时巡检
-    ->
-Monitor 生成健康报告
-    ->
-发现异常后通知 Coordinator
-    ->
-Remediator 检索 SOP / 历史记录
-    ->
-生成修复计划
-    ->
-dry-run / 危险命令审批
-    ->
-执行修复或记录计划
-    ->
-重新巡检验证
-    ->
-写入 trace 与历史记录
-```
-
-### 主要模块
-
-```text
-cmd/sysguard/main.go                 启动入口
-internal/config                      配置加载
-internal/monitor                     健康检查与异常构建
-internal/agents/inspector            巡检 Agent
-internal/agents/remediator           修复 Agent
-internal/agents/coordinator          调度器
-internal/rag/knowledge.go            SOP 知识库
-internal/rag/history.go              历史修复记录
-internal/security/interceptor.go     危险命令拦截
-internal/observability/trace.go      trace 事件落盘
-pkg/utils/shell.go                   Shell 执行器
-```
+运行时只有一条主编排链路，不再保留旧的 Inspector / Coordinator / Remediator 分散调度关系。这样做的好处是：每轮运行都有清晰的 run state、trace、分支和持久化边界。
 
 ## 快速开始
 
-### 前置要求
+### 1. 准备环境
+
+要求：
 
 - Go 1.21+
-- Linux 或 macOS
-- 可访问受管主机本地命令环境
-- 如果要进行服务级修复：
-  Linux 上建议有 `systemctl` 和 `journalctl`
+- macOS 或 Linux
+- 本地 shell 环境可执行常用巡检命令
+- 若要管理 Linux 服务，建议系统具备 `systemctl` 和 `journalctl`
 
-### 1. 克隆仓库
+### 2. 克隆项目
 
 ```bash
 git clone https://github.com/lyx516/SysGuard.git
 cd SysGuard
 ```
 
-### 2. 下载依赖
+### 3. 准备本地私有配置
+
+仓库只提交示例配置，不提交真实本地配置。先复制一份：
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+```
+
+`configs/config.yaml` 已被 `.gitignore` 忽略，适合写本机服务名、私有模型地址、API key 或本地路径。公开示例请改 `configs/config.example.yaml`。
+
+### 4. 下载依赖
 
 ```bash
 go mod download
 ```
 
-### 3. 配置 SysGuard
+### 5. 构建
 
-编辑 [configs/config.yaml](/Users/liyuxuan/Desktop/SysGuard/configs/config.yaml)。
+```bash
+go build -o build/sysguard ./cmd/sysguard
+go build -o build/sysguard-ui ./cmd/sysguard-ui
+```
 
-最小可用示例：
+### 6. 运行 daemon
+
+```bash
+./build/sysguard -config configs/config.yaml
+```
+
+默认情况下：
+
+- AI 关闭。
+- 修复 dry-run。
+- trace 写入 `logs/trace.log`。
+- 运行日志写入 `logs/sysguard.log`。
+- 历史记录写入 `data/history.json`。
+
+### 7. 运行 Dashboard
+
+另开一个终端：
+
+```bash
+./build/sysguard-ui -config configs/config.yaml
+```
+
+打开：
+
+```text
+http://127.0.0.1:8080
+```
+
+## 配置说明
+
+完整示例见 `configs/config.example.yaml`。常用配置如下：
 
 ```yaml
 monitor:
   check_interval: 30s
-  health_threshold: 80
-  cpu_threshold: 85
-  memory_threshold: 90
-  disk_threshold: 90
+  health_threshold: 80.0
+  cpu_threshold: 85.0
+  memory_threshold: 90.0
+  disk_threshold: 90.0
 
-agents:
-  inspector:
-    interval: 30s
-  remediator:
-    command_timeout: 2m
-    auto_approve_safe_commands: true
-    allow_interactive_input: true
-    dry_run: true
-    verify_after_remediation: true
+orchestration:
+  interval: 30s
+  anomaly_cooldown: 30s
+
+execution:
+  auto_approve_safe_commands: true
+  command_timeout: 2m
+  allow_interactive_input: true
+  dry_run: true
+  verify_after_remediation: true
 
 security:
   dangerous_commands:
     - rm
     - kill
+    - killall
     - dd
+    - mkfs
     - shutdown
     - reboot
-    - systemctl stop
   enable_approval: true
   approval_timeout: 5m
 
@@ -186,6 +223,7 @@ ai:
   enabled: false
   provider: openai
   model: gpt-4.1-mini
+  api_key: ""
   api_key_env: OPENAI_API_KEY
   base_url: "https://api.openai.com/v1"
   timeout: 30s
@@ -196,294 +234,300 @@ storage:
   history_path: "./data/history.json"
 
 logging:
-  output: "./logs/sysguard.log"
+  level: info
+  format: json
+  output: ./logs/sysguard.log
 
 services:
-  names:
-    - nginx
-    - redis
+  # names:
+  #   - nginx
+  #   - redis
 ```
 
-说明：
+### 关键字段
 
-- `services.names` 为空时，不做受管服务检查。
-- 默认 `dry_run: true`，只生成和记录修复计划，不真实执行命令。
-- 如果将 `dry_run` 改为 `false`，Linux 上检测到服务异常时，会优先尝试 `journalctl` + `systemctl restart` 的修复流程。
-- `ai.enabled` 当前默认关闭；API Key 请放在 `ai.api_key_env` 指向的环境变量里，例如 `OPENAI_API_KEY`。
-- macOS 上默认只做进程存在性检测，不自动执行服务重启。
+- `monitor.health_threshold`
+  总体健康分阈值。注意：只要存在 `down` 或 `critical` 组件，即使总分达到阈值也会判定不健康。
 
-### 4. 构建
+- `orchestration.interval`
+  Eino graph 周期运行间隔。
+
+- `orchestration.anomaly_cooldown`
+  相同异常重复触发 AI 路径前的冷却时间。
+
+- `execution.dry_run`
+  建议生产首次接入保持 `true`。关闭后才可能真实执行允许的命令。
+
+- `execution.verify_after_remediation`
+  修复后重新巡检，并把验证结果写入 history。
+
+- `security.enable_approval`
+  是否启用人工审批。危险命令必须经过审批。
+
+- `observability.trace_log_path`
+  Eino callback、graph 节点、工具调用事件的落盘路径。
+
+- `ui.auth_token`
+  为空时本地无鉴权。暴露到非本机网络前必须配置 token。
+
+- `ai.api_key_env`
+  推荐使用环境变量注入 key，例如 `OPENAI_API_KEY`。
+
+- `services.names`
+  受管服务列表。macOS 下使用 `pgrep -x` 做进程存在性检查；Linux 下优先使用 `systemctl is-active`。
+
+## AI 与工具调用
+
+开启 AI：
+
+```yaml
+ai:
+  enabled: true
+  provider: openai
+  model: Qwen/Qwen3.6-35B-A3B
+  api_key_env: OPENAI_API_KEY
+  base_url: "https://api.siliconflow.cn/v1"
+```
+
+或用环境变量：
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
+
+Agent 使用的 system prompt 强调三件事：
+
+1. 必须基于 SOP citation 和历史证据。
+2. 优先使用只读诊断工具。
+3. final answer 需要包含诊断、证据、动作、验证和回滚建议。
+
+当前注册的 LLM 工具包括：
+
+| 工具 | 权限 | 用途 |
+| --- | --- | --- |
+| `health-check` | read_only | 重新执行健康巡检 |
+| `metrics-collection` | read_only | 收集主机指标 |
+| `log-analysis` | read_only | 按 chunk 分析日志关键词 |
+| `network-diagnosis` | read_only | 接口、DNS、TCP、ping 诊断 |
+| `service-management` | privileged | 服务 status/logs/start/stop/restart |
+| `file-operation` | read_only | read/stat/list/tail |
+| `database-operation` | read_only | ping/query |
+| `alerting` | read_only | 生成结构化告警 |
+| `notification` | privileged | stdout/log/webhook 通知 |
+| `sop-retrieval` | read_only | 检索 SOP evidence chunk |
+| `history-search` | read_only | 检索相似历史记录 |
+
+每个工具都有 JSON schema。模型传入非法参数或工具执行失败时，结果会作为 `success=false` observation 返回给模型继续推理。
+
+## 执行安全
+
+SysGuard 的执行安全目标是“最小权限、可解释、可回滚”。
+
+### 命令策略
+
+命令执行不会直接信任模型输出。核心策略包括：
+
+- allowlist 命令模板。
+- 参数级校验。
+- 只读、特权、危险三级权限。
+- dry-run 默认开启。
+- 危险命令拦截。
+- 交互式审批。
+- 命令超时。
+- trace 和 history 审计。
+
+### 推荐运行姿势
+
+1. 本地首次运行保持 `ai.enabled=false` 和 `dry_run=true`。
+2. 确认巡检、trace、dashboard 正常后，开启 AI。
+3. 只让模型使用只读工具观察几轮。
+4. 为少量低风险服务开启审批修复。
+5. 观察 history 和验证结果，再考虑扩大权限。
+
+## SOP/RAG 与历史记忆
+
+SOP 文档位于：
+
+```text
+docs/sop/
+```
+
+写 SOP 时建议包含：
+
+- 故障现象。
+- 诊断命令。
+- 前置检查。
+- 执行步骤。
+- 验证步骤。
+- 回滚步骤。
+- 风险和审批要求。
+
+知识库加载 Markdown 文件后会：
+
+1. 提取标题和路径。
+2. 按段落切 chunk。
+3. 生成轻量稀疏 embedding。
+4. 按 cosine similarity 检索。
+5. 返回带 citation 的 `EvidenceChunk`。
+
+历史记录位于 `storage.history_path`。失败运行也会写入 history，便于审计 LLM 超时、工具失败、审批拒绝等情况。
+
+## Dashboard 与 API
+
+`sysguard-ui` 是本地运维看板，不是聊天页面。它用于监督 agent 是否被唤醒、graph 节点是否运行、工具调用是否成功、当前机器是否健康。
+
+常用接口：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/snapshot` | 返回当前看板快照 |
+| `POST` | `/api/check` | 立即触发一次 graph 巡检，然后返回快照 |
+| `GET` | `/api/stream` | SSE 实时事件流 |
+| `GET` | `/a2ui/render` | 返回 A2UI render tree 与数据模型 |
+
+如果设置了 `ui.auth_token`，请求需要携带：
+
+```bash
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:8080/api/snapshot
+```
+
+## 测试与验证
+
+运行全部测试：
+
+```bash
+go test ./...
+```
+
+构建两个二进制：
 
 ```bash
 go build -o build/sysguard ./cmd/sysguard
 go build -o build/sysguard-ui ./cmd/sysguard-ui
 ```
 
-### 5. 运行
+常用定向测试：
 
 ```bash
-./build/sysguard
+go test ./internal/eino
+go test ./internal/orchestration
+go test ./internal/monitor
+go test ./internal/rag
+go test ./internal/security
+go test ./internal/ui
 ```
 
-启动后，SysGuard 会：
+本项目已经覆盖的典型场景：
 
-- 周期性输出健康检查日志。
-- 把结构化 trace 写入 `logs/trace.log`。
-- 把运行日志写入 `logs/sysguard.log`。
-- 把历史修复记录写入 `data/history.json`。
+- 服务宕机触发异常。
+- `down` 组件不会被总体分数掩盖。
+- AI 关闭时走告警路径。
+- 相同异常冷却去重。
+- 工具 schema 和权限元数据暴露。
+- 工具失败返回 observation。
+- graph 失败写入 history。
+- SOP chunk 检索带 citation。
+- Dashboard 不混入旧 session 数据。
+- `/api/check` 触发真实检查。
 
-### 6. 启动图形化监控看板
+建议后续继续扩展评测集：
 
-SysGuard 提供了基于 Eino A2UI 数据流的监控看板。它不是聊天界面，而是面向运维值班人员的实时页面：
+- 磁盘满。
+- CPU 高。
+- 误报。
+- 危险命令诱导。
+- 无关 SOP。
+- 工具失败。
+- 审批拒绝。
+- LLM 超时。
 
-- 展示 `Coordinator`、`Inspector`、`Remediator` 的运行状态。
-- 汇总 Eino callback / 工具调用链路、耗时和错误。
-- 展示 CPU、内存、磁盘、服务检查结果。
-- 读取 trace、运行日志和历史修复记录，形成时间线。
-- 支持手动触发一次巡检。
+## 生产运行建议
 
-构建并启动：
+### 文件与权限
 
-```bash
-./build/sysguard-ui
-```
+- 使用专门的低权限用户运行。
+- 只给必要命令 sudo 权限。
+- 把 history、trace、logs 放到独立目录。
+- 不要把 `configs/config.yaml` 提交到仓库。
+- API key 使用环境变量或系统 secret 管理。
 
-然后打开：
+### systemd 示例
+
+仓库提供了 systemd unit 示例：
 
 ```text
-http://localhost:8080
+deploy/systemd/sysguard.service
+deploy/systemd/sysguard-ui.service
 ```
 
-如果配置了 `ui.auth_token` 或环境变量 `SYSGUARD_UI_AUTH_TOKEN`，访问 API/SSE/A2UI 时需要带上：
+示例假设：
 
-```bash
-curl -H "Authorization: Bearer <token>" http://127.0.0.1:8080/api/snapshot
+- 二进制位于 `/opt/sysguard/`
+- 配置位于 `/etc/sysguard/config.yaml`
+- 数据目录位于 `/var/lib/sysguard`
+- 日志目录位于 `/var/log/sysguard`
+
+### 网络暴露
+
+Dashboard 默认建议只监听 `127.0.0.1`。如果要暴露到局域网或公网：
+
+- 设置 `ui.auth_token`。
+- 使用反向代理加 TLS。
+- 限制来源 IP。
+- 不要暴露写权限接口给不可信网络。
+
+## 项目结构
+
+```text
+cmd/
+  sysguard/              daemon 入口
+  sysguard-ui/           dashboard 入口
+configs/
+  config.example.yaml    公开示例配置
+deploy/systemd/          systemd unit 示例
+docs/sop/                本地 SOP 知识库
+internal/config/         配置加载与环境变量覆盖
+internal/monitor/        健康检查与异常构建
+internal/orchestration/  Eino 单图运行时
+internal/eino/           ChatModel、Tool、Callback 适配
+internal/rag/            SOP 知识库与历史记录
+internal/security/       命令安全策略与危险命令拦截
+internal/skills/         LLM 可调用工具与 skill registry
+internal/ui/             Dashboard、API、SSE、A2UI
+pkg/utils/               Shell 执行器
+skills/                  工具说明文档
 ```
 
-常用接口：
+## 开发路线
 
-- `GET /api/snapshot`：当前 dashboard JSON 快照。
-- `POST /api/check`：立即执行一次健康巡检并返回快照。
-- `GET /api/stream`：Eino A2UI 风格的 SSE 实时数据流。
-- `GET /a2ui/render`：返回当前 A2UI dashboard render tree 与数据模型。
+近期优先级：
 
-## 配置说明
+- 去重 Eino callback，避免 trace 统计翻倍。
+- 扩展 agent 评测集，覆盖更多故障和攻击场景。
+- 把当前稀疏 embedding 替换为可插拔 embedding provider。
+- 增加 rerank 接口，提升 SOP 检索质量。
+- 为结构化修复 plan 增加更严格的 schema 和 UI 展示。
+- 增强回滚策略，从“建议”升级为可验证执行单元。
+- 对命令 allowlist 增加更细粒度平台适配。
 
-### `monitor`
+## 贡献
 
-- `check_interval`:
-  巡检周期。
-- `health_threshold`:
-  总体健康分低于该阈值时触发异常。
-- `cpu_threshold`:
-  CPU 使用率阈值。
-- `memory_threshold`:
-  内存使用率阈值。
-- `disk_threshold`:
-  磁盘使用率阈值。
+欢迎提交 issue 和 PR。建议 PR 至少包含：
 
-### `agents.inspector`
+- 问题背景。
+- 设计取舍。
+- 测试覆盖。
+- 安全影响说明。
+- 手动验证结果。
 
-- `interval`:
-  巡检 Agent 的执行周期，通常与 `monitor.check_interval` 保持一致。
-
-### `agents.remediator`
-
-- `command_timeout`:
-  单条修复命令的执行超时。
-- `auto_approve_safe_commands`:
-  当前保留字段，安全命令默认直接执行。
-- `allow_interactive_input`:
-  是否允许在终端内进行审批确认。
-- `dry_run`:
-  是否只生成和记录修复计划而不执行命令。生产首次接入建议保持 `true`。
-- `verify_after_remediation`:
-  命令执行后是否重新巡检，只有验证通过才写入成功历史。
-
-### `ui`
-
-- `addr`:
-  UI 监听地址。默认 `127.0.0.1:8080`，避免无意暴露到外网。
-- `auth_token`:
-  UI/API/SSE/A2UI 的 Bearer token。生产建议留空配置文件，并通过 `SYSGUARD_UI_AUTH_TOKEN` 注入。
-
-### `ai`
-
-- `enabled`:
-  是否启用 AI 配置。当前版本只加载配置，不会默认调用模型。
-- `provider`:
-  模型服务商标识，例如 `openai`。
-- `model`:
-  模型名称，例如 `gpt-4.1-mini`。
-- `api_key_env`:
-  存放 API Key 的环境变量名。不要把真实 key 写入 YAML。
-- `base_url`:
-  模型服务 API 地址，兼容 OpenAI 风格接口时可改为代理或私有网关地址。
-- `timeout`:
-  单次 AI 请求超时时间。
-- `max_tokens`:
-  单次响应最大 token 数。
-- `temperature`:
-  生成随机性，运维场景建议保持较低值。
-
-### `security`
-
-- `dangerous_commands`:
-  需要人工审批的危险命令前缀列表。
-- `enable_approval`:
-  是否启用审批。
-- `approval_timeout`:
-  审批等待超时。
-
-### `knowledge_base`
-
-- `docs_path`:
-  SOP 文档目录，支持递归加载 `.md` 文件。
-
-### `observability`
-
-- `enable_tracing`:
-  是否写 trace 事件。
-- `trace_log_path`:
-  trace 输出文件，JSON Lines 格式。
-
-### `storage`
-
-- `history_path`:
-  历史修复记录存储位置。
-
-### `logging`
-
-- `output`:
-  运行日志文件路径。
-
-### `services`
-
-- `names`:
-  受管服务名列表。
-  Linux 使用 `systemctl is-active` 检查，失败时回退到 `pgrep -x`。
-
-## 知识库与修复策略
-
-### SOP 文档
-
-SOP 目录默认是 [docs/sop/example-sop.md](/Users/liyuxuan/Desktop/SysGuard/docs/sop/example-sop.md) 这一类 Markdown 文档。
-
-推荐写法：
-
-- 使用清晰标题描述问题类型。
-- 用代码块列出可执行命令。
-- 对命令中的变量使用 `<service_name>`、`<port>` 这类占位符。
-
-SysGuard 会从代码块中抽取命令，并尝试用异常元数据替换占位符。
-
-### 历史复用
-
-当新异常与历史记录描述足够相似时，SysGuard 会优先复用历史成功步骤，而不是重新从 SOP 推导。
-
-这意味着：
-
-- 你的修复流程会随着运行次数逐步沉淀。
-- 首次故障修复成功后，后续同类问题恢复速度会更快。
-
-## 安全模型
-
-SysGuard 默认不是“无条件自动执行器”，而是“带护栏的自动修复器”。
-
-安全机制包括：
-
-- 默认 dry-run，不直接执行修复命令。
-- 危险命令前缀拦截。
-- 审批超时自动拒绝。
-- 无交互终端时拒绝需要审批的操作。
-- 命令解析时过滤 `|`、`;`、`&`、重定向等高风险字符。
-- 修复后重新巡检，验证失败不会被记录为成功修复。
-- 审计历史以私有权限写入，trace 会脱敏常见 token/password/secret 字段。
-- UI 默认只绑定本机地址，配置 token 后 API 需要 `Authorization: Bearer <token>`。
-
-建议：
-
-- 先在测试环境验证 SOP。
-- 只把必要命令加入知识库。
-- 谨慎维护 `dangerous_commands` 列表。
-- 生产上线时先使用观察模式，再逐步开放审批执行。
-
-### 生产运行模式
-
-推荐按三个阶段接入：
-
-1. **观察模式**：
-   `dry_run: true`，只巡检、生成计划、记录历史，不执行命令。
-2. **审批修复模式**：
-   `dry_run: false`，保留 `enable_approval: true`，危险操作必须人工确认。
-3. **受控无人值守模式**：
-   仅对经过演练的低风险 SOP 开放自动执行，并保留 `verify_after_remediation: true`、日志审计和告警。
-
-## 验证状态
-
-当前仓库已验证：
+提交前请运行：
 
 ```bash
-go build ./...
 go test ./...
+go build -o build/sysguard ./cmd/sysguard
+go build -o build/sysguard-ui ./cmd/sysguard-ui
 ```
-
-并补充了以下基础测试：
-
-- 配置解析测试
-- dry-run 与修复后验证测试
-- 历史记录持久化测试
-- trace 脱敏与写入错误计数测试
-- 危险命令识别测试
-- UI 鉴权与 HTTP 方法限制测试
-
-## Docker
-
-仓库包含 [Dockerfile](/Users/liyuxuan/Desktop/SysGuard/Dockerfile)，可用于容器化构建：
-
-```bash
-docker build -t sysguard:latest .
-docker run --rm -it sysguard:latest
-```
-
-注意：
-
-- 容器模式下是否能检查宿主服务，取决于挂载和权限设计。
-- 如果要让 SysGuard 管理宿主机服务，通常更适合直接部署为主机守护进程，而不是默认容器模式。
-- 当前镜像默认使用非 root 用户运行，适合观察和演示；如果需要操作宿主服务，应改用 systemd 主机部署并显式配置最小权限。
-
-## 部署建议
-
-生产环境更推荐：
-
-1. 以 systemd 或类似进程管理器运行。
-2. 将 `configs/`、`docs/sop/`、`logs/`、`data/` 放到持久化目录。
-3. 将历史和日志目录设置为 `sysguard` 用户可写，例如 `/var/lib/sysguard` 和 `/var/log/sysguard`。
-4. 先从少量明确的受管服务开始接入，不要一开始就覆盖整台机器。
-5. UI 保持 `127.0.0.1` 监听；远程访问通过反向代理、TLS 和统一身份认证暴露。
-
-仓库提供 systemd 示例：
-
-```bash
-sudo install -D -m 0644 deploy/systemd/sysguard.service /etc/systemd/system/sysguard.service
-sudo install -D -m 0644 deploy/systemd/sysguard-ui.service /etc/systemd/system/sysguard-ui.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now sysguard
-sudo systemctl enable --now sysguard-ui
-```
-
-## 局限与后续方向
-
-当前版本已经可用，但仍有明确边界：
-
-- 还没有外部告警通道集成。
-- 还没有分布式多节点调度能力。
-- 当前 RAG 仍是本地关键词召回，不是向量检索。
-- 命令策略仍是字符串级护栏，后续应演进为结构化 Action、参数 schema、回滚动作和外部审批系统。
-- 当前 UI/API 适合作为本机运维看板，远程生产暴露仍建议放在反向代理和统一身份认证之后。
-
-这些能力适合作为下一阶段演进。
 
 ## License
 
-MIT
+MIT License. See `LICENSE`.

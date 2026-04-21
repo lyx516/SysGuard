@@ -39,6 +39,10 @@ logs/
 # Config files with secrets
 configs/secrets.yaml
 configs/secrets.yml
+configs/config.yaml
+configs/config.local.yaml
+.env
+.env.*
 
 # Temporary files
 tmp/

@@ -31,10 +31,10 @@ type HealthReport struct {
 }
 
 type ComponentStatus struct {
-	Name      string
-	Status    string
-	Message   string
-	Metrics   map[string]interface{}
+	Name    string
+	Status  string
+	Message string
+	Metrics map[string]interface{}
 }
 
 type Monitor struct {
@@ -63,7 +63,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) (*HealthReport, error) {
 	report.Components["network"] = m.checkNetwork(ctx)
 	report.Components["services"] = m.checkServices(ctx)
 	report.Score = m.calculateScore(report.Components)
-	report.IsHealthy = report.Score >= m.cfg.Monitor.HealthThreshold
+	report.IsHealthy = m.isHealthy(report.Components)
 	return report, nil
 }
 
@@ -261,6 +261,16 @@ func (m *Monitor) calculateScore(components map[string]ComponentStatus) float64 
 		}
 	}
 	return total / float64(len(components))
+}
+
+func (m *Monitor) isHealthy(components map[string]ComponentStatus) bool {
+	for _, comp := range components {
+		status := strings.ToLower(strings.TrimSpace(comp.Status))
+		if status == "down" || status == "critical" {
+			return false
+		}
+	}
+	return m.calculateScore(components) >= m.cfg.Monitor.HealthThreshold
 }
 
 func (m *Monitor) RegisterAnomalyHandler(handler AnomalyHandler) {

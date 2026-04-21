@@ -12,7 +12,8 @@ import (
 
 type Config struct {
 	Monitor       MonitorConfig
-	Agents        AgentsConfig
+	Orchestration OrchestrationConfig
+	Execution     ExecutionConfig
 	Security      SecurityConfig
 	KnowledgeBase KnowledgeBaseConfig
 	Observability ObservabilityConfig
@@ -30,16 +31,12 @@ type MonitorConfig struct {
 	DiskThreshold   float64
 }
 
-type AgentsConfig struct {
-	Inspector  InspectorConfig
-	Remediator RemediatorConfig
+type OrchestrationConfig struct {
+	Interval        time.Duration
+	AnomalyCooldown time.Duration
 }
 
-type InspectorConfig struct {
-	Interval time.Duration
-}
-
-type RemediatorConfig struct {
+type ExecutionConfig struct {
 	CommandTimeout         time.Duration
 	AutoApproveSafe        bool
 	AllowInteractiveInput  bool
@@ -98,17 +95,16 @@ func Default() *Config {
 			MemoryThreshold: 90,
 			DiskThreshold:   90,
 		},
-		Agents: AgentsConfig{
-			Inspector: InspectorConfig{
-				Interval: 30 * time.Second,
-			},
-			Remediator: RemediatorConfig{
-				CommandTimeout:         2 * time.Minute,
-				AutoApproveSafe:        true,
-				AllowInteractiveInput:  true,
-				DryRun:                 true,
-				VerifyAfterRemediation: true,
-			},
+		Orchestration: OrchestrationConfig{
+			Interval:        30 * time.Second,
+			AnomalyCooldown: 30 * time.Second,
+		},
+		Execution: ExecutionConfig{
+			CommandTimeout:         2 * time.Minute,
+			AutoApproveSafe:        true,
+			AllowInteractiveInput:  true,
+			DryRun:                 true,
+			VerifyAfterRemediation: true,
 		},
 		Security: SecurityConfig{
 			DangerousCommands: []string{"rm", "kill", "killall", "dd", "mkfs", "shutdown", "reboot", "launchctl unload", "systemctl stop"},
@@ -220,23 +216,26 @@ func Load(path string) (*Config, error) {
 	if v := values["monitor.disk_threshold"]; v != "" {
 		cfg.Monitor.DiskThreshold = parseFloat(v, cfg.Monitor.DiskThreshold)
 	}
-	if v := values["agents.inspector.interval"]; v != "" {
-		cfg.Agents.Inspector.Interval = parseDuration(v, cfg.Agents.Inspector.Interval)
+	if v := values["orchestration.interval"]; v != "" {
+		cfg.Orchestration.Interval = parseDuration(v, cfg.Orchestration.Interval)
 	}
-	if v := values["agents.remediator.command_timeout"]; v != "" {
-		cfg.Agents.Remediator.CommandTimeout = parseDuration(v, cfg.Agents.Remediator.CommandTimeout)
+	if v := values["orchestration.anomaly_cooldown"]; v != "" {
+		cfg.Orchestration.AnomalyCooldown = parseDuration(v, cfg.Orchestration.AnomalyCooldown)
 	}
-	if v := values["agents.remediator.auto_approve_safe_commands"]; v != "" {
-		cfg.Agents.Remediator.AutoApproveSafe = parseBool(v, cfg.Agents.Remediator.AutoApproveSafe)
+	if v := values["execution.command_timeout"]; v != "" {
+		cfg.Execution.CommandTimeout = parseDuration(v, cfg.Execution.CommandTimeout)
 	}
-	if v := values["agents.remediator.allow_interactive_input"]; v != "" {
-		cfg.Agents.Remediator.AllowInteractiveInput = parseBool(v, cfg.Agents.Remediator.AllowInteractiveInput)
+	if v := values["execution.auto_approve_safe_commands"]; v != "" {
+		cfg.Execution.AutoApproveSafe = parseBool(v, cfg.Execution.AutoApproveSafe)
 	}
-	if v := values["agents.remediator.dry_run"]; v != "" {
-		cfg.Agents.Remediator.DryRun = parseBool(v, cfg.Agents.Remediator.DryRun)
+	if v := values["execution.allow_interactive_input"]; v != "" {
+		cfg.Execution.AllowInteractiveInput = parseBool(v, cfg.Execution.AllowInteractiveInput)
 	}
-	if v := values["agents.remediator.verify_after_remediation"]; v != "" {
-		cfg.Agents.Remediator.VerifyAfterRemediation = parseBool(v, cfg.Agents.Remediator.VerifyAfterRemediation)
+	if v := values["execution.dry_run"]; v != "" {
+		cfg.Execution.DryRun = parseBool(v, cfg.Execution.DryRun)
+	}
+	if v := values["execution.verify_after_remediation"]; v != "" {
+		cfg.Execution.VerifyAfterRemediation = parseBool(v, cfg.Execution.VerifyAfterRemediation)
 	}
 	if v := values["security.enable_approval"]; v != "" {
 		cfg.Security.EnableApproval = parseBool(v, cfg.Security.EnableApproval)
@@ -276,6 +275,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := values["ai.api_key_env"]; v != "" {
 		cfg.AI.APIKeyEnv = v
+	}
+	if v := values["ai.api_key"]; v != "" {
+		cfg.AI.APIKey = v
 	}
 	if v := values["ai.base_url"]; v != "" {
 		cfg.AI.BaseURL = v
@@ -371,7 +373,12 @@ func applyEnv(cfg *Config) {
 		cfg.AI.BaseURL = baseURL
 	}
 	if cfg.AI.APIKeyEnv != "" {
-		cfg.AI.APIKey = strings.TrimSpace(os.Getenv(cfg.AI.APIKeyEnv))
+		if envValue := strings.TrimSpace(os.Getenv(cfg.AI.APIKeyEnv)); envValue != "" {
+			cfg.AI.APIKey = envValue
+		}
+	}
+	if apiKey := strings.TrimSpace(os.Getenv("SYSGUARD_AI_API_KEY")); apiKey != "" {
+		cfg.AI.APIKey = apiKey
 	}
 }
 

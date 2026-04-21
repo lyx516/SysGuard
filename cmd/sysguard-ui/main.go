@@ -13,6 +13,7 @@ import (
 	"github.com/sysguard/sysguard/internal/config"
 	"github.com/sysguard/sysguard/internal/monitor"
 	"github.com/sysguard/sysguard/internal/observability"
+	"github.com/sysguard/sysguard/internal/orchestration"
 	"github.com/sysguard/sysguard/internal/rag"
 	"github.com/sysguard/sysguard/internal/security"
 	"github.com/sysguard/sysguard/internal/ui"
@@ -47,14 +48,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize history knowledge base: %v", err)
 	}
+	kb, err := rag.NewKnowledgeBase(ctx, cfg.KnowledgeBase.DocsPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize knowledge base: %v", err)
+	}
 	interceptor := security.NewCommandInterceptor(cfg.Security.DangerousCommands)
 	healthMonitor := monitor.NewMonitor(cfg, interceptor, obs)
+	runtime, err := orchestration.NewRuntime(ctx, cfg, kb, historyKB, healthMonitor, interceptor, obs)
+	if err != nil {
+		log.Fatalf("Failed to initialize Eino orchestration runtime: %v", err)
+	}
 
 	listenAddr := cfg.UI.Addr
 	if *addr != "" {
 		listenAddr = *addr
 	}
-	collector := ui.NewCollector(cfg, healthMonitor, obs, historyKB)
+	collector := ui.NewCollectorWithRunner(cfg, healthMonitor, obs, historyKB, runtime)
 	server := ui.NewServer(listenAddr, collector)
 
 	log.Printf("SysGuard UI started at http://%s", listenAddr)

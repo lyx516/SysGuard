@@ -13,6 +13,7 @@ import (
 	"github.com/sysguard/sysguard/internal/config"
 	"github.com/sysguard/sysguard/internal/monitor"
 	"github.com/sysguard/sysguard/internal/observability"
+	"github.com/sysguard/sysguard/internal/orchestration"
 	"github.com/sysguard/sysguard/internal/rag"
 )
 
@@ -23,11 +24,21 @@ type Collector struct {
 	monitor    healthChecker
 	obs        *observability.GlobalCallback
 	historyKB  *rag.HistoryKnowledgeBase
+	runner     graphRunner
 	skillsPath string
 }
 
 type healthChecker interface {
 	CheckHealth(ctx context.Context) (*monitor.HealthReport, error)
+}
+
+type anomalyTrigger interface {
+	BuildAnomaly(report *monitor.HealthReport) monitor.Anomaly
+	NotifyAnomaly(ctx context.Context, anomaly monitor.Anomaly) error
+}
+
+type graphRunner interface {
+	Run(ctx context.Context, trigger orchestration.Trigger) (*orchestration.State, error)
 }
 
 type Snapshot struct {
@@ -105,8 +116,9 @@ type LogSummary struct {
 }
 
 type LogEntry struct {
-	Level   string `json:"level"`
-	Message string `json:"message"`
+	Level     string    `json:"level"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
 }
 
 type HistorySummary struct {
@@ -151,8 +163,47 @@ func NewCollector(cfg *config.Config, monitor healthChecker, obs *observability.
 	return &Collector{cfg: cfg, monitor: monitor, obs: obs, historyKB: historyKB, skillsPath: "./skills"}
 }
 
+func NewCollectorWithRunner(cfg *config.Config, monitor healthChecker, obs *observability.GlobalCallback, historyKB *rag.HistoryKnowledgeBase, runner graphRunner) *Collector {
+	collector := NewCollector(cfg, monitor, obs, historyKB)
+	collector.runner = runner
+	return collector
+}
+
 func (c *Collector) Snapshot(ctx context.Context) (*Snapshot, error) {
+	return c.snapshot(ctx, nil)
+}
+
+func (c *Collector) TriggerCheck(ctx context.Context) (*Snapshot, error) {
+	if c.runner != nil {
+		state, err := c.runner.Run(ctx, orchestration.TriggerManualCheck)
+		if err != nil {
+			return nil, err
+		}
+		if state != nil {
+			return c.snapshot(ctx, state.Report)
+		}
+		return c.snapshot(ctx, nil)
+	}
+	if c.monitor == nil {
+		return c.snapshot(ctx, nil)
+	}
+	report, err := c.monitor.CheckHealth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !report.IsHealthy {
+		if trigger, ok := c.monitor.(anomalyTrigger); ok {
+			if err := trigger.NotifyAnomaly(ctx, trigger.BuildAnomaly(report)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return c.snapshot(ctx, report)
+}
+
+func (c *Collector) snapshot(ctx context.Context, report *monitor.HealthReport) (*Snapshot, error) {
 	now := time.Now().UTC()
+	sessionStart := detectCurrentRunStart(c.cfg.Storage.LogPath)
 	snapshot := &Snapshot{
 		GeneratedAt: now,
 		System: SystemOverview{
@@ -165,19 +216,24 @@ func (c *Collector) Snapshot(ctx context.Context) (*Snapshot, error) {
 			Collected: make(map[string]MetricView),
 		},
 		Agents: []AgentRuntime{
-			{Name: "Coordinator", Role: "调度巡检与修复流程", Status: "standby"},
-			{Name: "Inspector", Role: "持续健康巡检", Status: "standby"},
-			{Name: "Remediator", Role: "SOP 检索与安全修复", Status: "standby"},
+			{Name: "Eino.Graph", Role: "单图编排运行", Status: "standby"},
+			{Name: "Eino.Lambda", Role: "巡检、路由、检索、验证节点", Status: "standby"},
+			{Name: "Eino.ChatModel", Role: "模型推理节点", Status: "standby"},
+			{Name: "Eino.Tools", Role: "受控工具调用节点", Status: "standby"},
 		},
 	}
 
 	if c.monitor != nil {
-		report, err := c.monitor.CheckHealth(ctx)
-		if err != nil {
-			snapshot.Timeline = append(snapshot.Timeline, TimelineEvent{
-				Time: now, Source: "monitor", Level: "error", Message: err.Error(),
-			})
-		} else {
+		if report == nil {
+			var err error
+			report, err = c.monitor.CheckHealth(ctx)
+			if err != nil {
+				snapshot.Timeline = append(snapshot.Timeline, TimelineEvent{
+					Time: now, Source: "monitor", Level: "error", Message: err.Error(),
+				})
+			}
+		}
+		if report != nil {
 			snapshot.System.HealthScore = report.Score
 			snapshot.System.IsHealthy = report.IsHealthy
 			snapshot.System.Components = componentViews(report.Components)
@@ -185,10 +241,10 @@ func (c *Collector) Snapshot(ctx context.Context) (*Snapshot, error) {
 		}
 	}
 
-	snapshot.Tools = c.collectTools()
+	snapshot.Tools = c.collectTools(sessionStart)
 	snapshot.Agents = enrichAgents(snapshot.Agents, snapshot.Tools.Recent)
-	snapshot.Logs = readLogs(c.cfg.Storage.LogPath)
-	snapshot.History = c.collectHistory(ctx)
+	snapshot.Logs = readLogs(c.cfg.Storage.LogPath, sessionStart)
+	snapshot.History = c.collectHistory(ctx, sessionStart)
 	snapshot.Documents = c.collectDocuments()
 	snapshot.Timeline = mergeTimeline(snapshot.Timeline, snapshot.Tools.Recent, snapshot.Logs.Recent, snapshot.History.Recent)
 	normalizeSnapshot(snapshot)
@@ -234,10 +290,13 @@ func collectedMetrics(components map[string]monitor.ComponentStatus) map[string]
 	return metrics
 }
 
-func (c *Collector) collectTools() ToolSummary {
+func (c *Collector) collectTools(since time.Time) ToolSummary {
 	byID := make(map[string]ToolCall)
 	if c.obs != nil {
 		for _, record := range c.obs.GetAllCallbacks() {
+			if !since.IsZero() && record.StartTime.Before(since) {
+				continue
+			}
 			byID[record.ID] = ToolCall{
 				ID:        record.ID,
 				Name:      callbackName(record.ID),
@@ -256,7 +315,7 @@ func (c *Collector) collectTools() ToolSummary {
 			byID[record.ID] = call
 		}
 	}
-	for _, call := range readTraceToolCalls(c.cfg.Observability.TraceLogPath) {
+	for _, call := range readTraceToolCalls(c.cfg.Observability.TraceLogPath, since) {
 		if existing, ok := byID[call.ID]; ok && !existing.StartedAt.IsZero() {
 			continue
 		}
@@ -276,7 +335,7 @@ func (c *Collector) collectTools() ToolSummary {
 	return summary
 }
 
-func readTraceToolCalls(path string) []ToolCall {
+func readTraceToolCalls(path string, since time.Time) []ToolCall {
 	if path == "" {
 		return nil
 	}
@@ -341,6 +400,9 @@ func readTraceToolCalls(path string) []ToolCall {
 			call.Error = errMsg
 			call.Summary = call.Name + ": " + errMsg
 		}
+		if !since.IsZero() && !call.StartedAt.IsZero() && call.StartedAt.Before(since) {
+			continue
+		}
 		calls[id] = call
 	}
 	result := make([]ToolCall, 0, len(calls))
@@ -404,7 +466,7 @@ func scanMarkdownDocs(kind, root string) []DocumentSummary {
 func enrichAgents(agents []AgentRuntime, calls []ToolCall) []AgentRuntime {
 	for i := range agents {
 		for _, call := range calls {
-			if !strings.HasPrefix(call.Name, agents[i].Name+".") {
+			if call.Name != agents[i].Name && !strings.HasPrefix(call.Name, agents[i].Name+".") {
 				continue
 			}
 			agents[i].Runs++
@@ -421,7 +483,7 @@ func enrichAgents(agents []AgentRuntime, calls []ToolCall) []AgentRuntime {
 	return agents
 }
 
-func (c *Collector) collectHistory(ctx context.Context) HistorySummary {
+func (c *Collector) collectHistory(ctx context.Context, since time.Time) HistorySummary {
 	if c.historyKB == nil {
 		return HistorySummary{}
 	}
@@ -430,8 +492,12 @@ func (c *Collector) collectHistory(ctx context.Context) HistorySummary {
 		return HistorySummary{}
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].Timestamp.After(records[j].Timestamp) })
-	summary := HistorySummary{Total: len(records)}
+	summary := HistorySummary{}
 	for _, record := range records {
+		if !since.IsZero() && record.Timestamp.Before(since) {
+			continue
+		}
+		summary.Total++
 		if record.Success {
 			summary.Success++
 		} else {
@@ -451,7 +517,7 @@ func (c *Collector) collectHistory(ctx context.Context) HistorySummary {
 	return summary
 }
 
-func readLogs(path string) LogSummary {
+func readLogs(path string, since time.Time) LogSummary {
 	if path == "" {
 		return LogSummary{}
 	}
@@ -468,8 +534,12 @@ func readLogs(path string) LogSummary {
 		if line == "" {
 			continue
 		}
+		ts := parseLogTimestamp(line)
+		if !since.IsZero() && !ts.IsZero() && ts.Before(since) {
+			continue
+		}
 		level := classifyLog(line)
-		entries = append(entries, LogEntry{Level: level, Message: line})
+		entries = append(entries, LogEntry{Level: level, Message: line, Timestamp: ts})
 	}
 	summary := LogSummary{Total: len(entries)}
 	for _, entry := range entries {
@@ -498,7 +568,7 @@ func mergeTimeline(existing []TimelineEvent, tools []ToolCall, logs []LogEntry, 
 	}
 	for _, logEntry := range logs {
 		timeline = append(timeline, TimelineEvent{
-			Time:    time.Time{},
+			Time:    logEntry.Timestamp,
 			Source:  "log",
 			Level:   logEntry.Level,
 			Message: logEntry.Message,
@@ -519,6 +589,44 @@ func mergeTimeline(existing []TimelineEvent, tools []ToolCall, logs []LogEntry, 
 		return timeline[:maxRecentItems]
 	}
 	return timeline
+}
+
+func detectCurrentRunStart(path string) time.Time {
+	if path == "" {
+		return time.Time{}
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return time.Time{}
+	}
+	defer file.Close()
+
+	var latest time.Time
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.Contains(line, "SysGuard started successfully") {
+			continue
+		}
+		if ts := parseLogTimestamp(line); ts.After(latest) {
+			latest = ts
+		}
+	}
+	return latest
+}
+
+func parseLogTimestamp(line string) time.Time {
+	parts := strings.SplitN(line, " ", 3)
+	if len(parts) < 2 {
+		return time.Time{}
+	}
+	prefix := parts[0] + " " + parts[1]
+	for _, layout := range []string{"2006/01/02 15:04:05.000000", "2006/01/02 15:04:05"} {
+		if ts, err := time.ParseInLocation(layout, prefix, time.UTC); err == nil {
+			return ts
+		}
+	}
+	return time.Time{}
 }
 
 func classifyLog(line string) string {

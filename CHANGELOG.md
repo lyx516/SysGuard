@@ -4,14 +4,14 @@
 
 ### Added
 - Initial release of SysGuard intelligent O&M agent
-- Dual-agent architecture (Inspector and Remediator)
+- Initial rule-based operations automation architecture
 - Three-step remediation workflow with history learning
 - Skills framework with 10 production skills
 - Security layer with command interception
 - MIT License
 
 ### Features
-- Multi-agent coordination
+- Operations coordination
 - Approval workflow
 - Fault tolerance
 - RAG-based knowledge retrieval

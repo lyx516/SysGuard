@@ -68,12 +68,10 @@
 
 **Files:**
 - Modify: `README.md`
-- Modify: `Dockerfile`
 - Create: `deploy/systemd/sysguard.service`
 - Create: `deploy/systemd/sysguard-ui.service`
 
 - [ ] Document safe production modes: observe-only, approved remediation, and unattended remediation.
 - [ ] Add systemd unit examples with non-root defaults and explicit config paths.
-- [ ] Update Docker notes to clarify host-agent limitations.
 - [ ] Run `go test ./...`.
 - [ ] Commit and push.

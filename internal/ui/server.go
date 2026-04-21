@@ -153,7 +153,12 @@ func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
-	s.handleSnapshot(w, r)
+	snapshot, err := s.collector.TriggerCheck(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, snapshot)
 }
 
 func (s *Server) handleA2UIRender(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ import (
 type KnowledgeBase struct {
 	documents map[string]*Document
 	index     map[string][]string // 关键词到文档ID的映射
+	chunks    []*EvidenceChunk
 }
 
 // Document 文档结构
@@ -21,6 +22,21 @@ type Document struct {
 	Title    string
 	Content  string
 	Metadata map[string]string
+}
+
+type Citation struct {
+	DocumentID string `json:"document_id"`
+	Title      string `json:"title"`
+	Path       string `json:"path"`
+	ChunkID    string `json:"chunk_id"`
+}
+
+type EvidenceChunk struct {
+	ID        string             `json:"id"`
+	Content   string             `json:"content"`
+	Score     float64            `json:"score"`
+	Citation  Citation           `json:"citation"`
+	Embedding map[string]float64 `json:"-"`
 }
 
 // NewKnowledgeBase 创建新的知识库
@@ -73,10 +89,26 @@ func (kb *KnowledgeBase) loadDocuments(docPath string) error {
 
 // buildIndex 构建倒排索引
 func (kb *KnowledgeBase) buildIndex() {
+	kb.index = make(map[string][]string)
+	kb.chunks = nil
 	for id, doc := range kb.documents {
 		words := extractWords(doc.Content)
 		for _, word := range words {
 			kb.index[word] = append(kb.index[word], id)
+		}
+		for chunkIndex, content := range chunkDocument(doc.Content, 700) {
+			chunkID := fmt.Sprintf("%s#chunk-%d", id, chunkIndex+1)
+			kb.chunks = append(kb.chunks, &EvidenceChunk{
+				ID:      chunkID,
+				Content: content,
+				Citation: Citation{
+					DocumentID: id,
+					Title:      doc.Title,
+					Path:       doc.Metadata["path"],
+					ChunkID:    chunkID,
+				},
+				Embedding: sparseEmbedding(content),
+			})
 		}
 	}
 }
@@ -119,12 +151,38 @@ func (kb *KnowledgeBase) Retrieve(ctx context.Context, query string) ([]string, 
 	return results, nil
 }
 
+func (kb *KnowledgeBase) RetrieveEvidence(ctx context.Context, query string, limit int) ([]EvidenceChunk, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	queryEmbedding := sparseEmbedding(query)
+	scored := make([]EvidenceChunk, 0, len(kb.chunks))
+	for _, chunk := range kb.chunks {
+		copyChunk := *chunk
+		copyChunk.Score = cosineSimilarity(queryEmbedding, chunk.Embedding)
+		if copyChunk.Score > 0 {
+			copyChunk.Embedding = nil
+			scored = append(scored, copyChunk)
+		}
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].Score == scored[j].Score {
+			return scored[i].Citation.DocumentID < scored[j].Citation.DocumentID
+		}
+		return scored[i].Score > scored[j].Score
+	})
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+	return scored, nil
+}
+
 // AddDocument 添加文档到知识库
 func (kb *KnowledgeBase) AddDocument(id, title, content string) {
 	doc := &Document{
-		ID:      id,
-		Title:   title,
-		Content: content,
+		ID:       id,
+		Title:    title,
+		Content:  content,
 		Metadata: make(map[string]string),
 	}
 
@@ -155,4 +213,67 @@ func extractWords(content string) []string {
 		}
 	}
 	return result
+}
+
+func chunkDocument(content string, maxChars int) []string {
+	paragraphs := strings.Split(content, "\n\n")
+	chunks := make([]string, 0)
+	var current strings.Builder
+	for _, paragraph := range paragraphs {
+		trimmed := strings.TrimSpace(paragraph)
+		if trimmed == "" {
+			continue
+		}
+		if current.Len() > 0 && current.Len()+len(trimmed)+2 > maxChars {
+			chunks = append(chunks, current.String())
+			current.Reset()
+		}
+		if current.Len() > 0 {
+			current.WriteString("\n\n")
+		}
+		current.WriteString(trimmed)
+	}
+	if current.Len() > 0 {
+		chunks = append(chunks, current.String())
+	}
+	return chunks
+}
+
+func sparseEmbedding(content string) map[string]float64 {
+	embedding := make(map[string]float64)
+	for _, word := range extractWords(content) {
+		normalized := strings.Trim(word, ".,:;()[]{}#`\"'")
+		if len(normalized) > 2 {
+			embedding[normalized]++
+		}
+	}
+	return embedding
+}
+
+func cosineSimilarity(a, b map[string]float64) float64 {
+	var dot, normA, normB float64
+	for key, av := range a {
+		normA += av * av
+		if bv, ok := b[key]; ok {
+			dot += av * bv
+		}
+	}
+	for _, bv := range b {
+		normB += bv * bv
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (sqrt(normA) * sqrt(normB))
+}
+
+func sqrt(v float64) float64 {
+	if v == 0 {
+		return 0
+	}
+	x := v
+	for i := 0; i < 12; i++ {
+		x = 0.5 * (x + v/x)
+	}
+	return x
 }

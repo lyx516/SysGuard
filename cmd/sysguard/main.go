@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/sysguard/sysguard/internal/agents/coordinator"
 	"github.com/sysguard/sysguard/internal/config"
 	"github.com/sysguard/sysguard/internal/monitor"
 	"github.com/sysguard/sysguard/internal/observability"
+	"github.com/sysguard/sysguard/internal/orchestration"
 	"github.com/sysguard/sysguard/internal/rag"
 	"github.com/sysguard/sysguard/internal/security"
 )
@@ -61,12 +61,14 @@ func main() {
 	// 初始化监控器
 	monitor := monitor.NewMonitor(cfg, interceptor, obs)
 
-	// 初始化协调器
-	coord := coordinator.NewCoordinator(cfg, kb, historyKB, monitor, interceptor, obs)
+	runtime, err := orchestration.NewRuntime(ctx, cfg, kb, historyKB, monitor, interceptor, obs)
+	if err != nil {
+		log.Fatalf("Failed to initialize Eino orchestration runtime: %v", err)
+	}
 
 	// 启动系统
-	if err := coord.Start(ctx); err != nil {
-		log.Fatalf("Failed to start coordinator: %v", err)
+	if err := runtime.Start(ctx); err != nil {
+		log.Fatalf("Failed to start orchestration runtime: %v", err)
 	}
 
 	log.Println("SysGuard started successfully")
@@ -74,7 +76,7 @@ func main() {
 	<-ctx.Done()
 
 	// 优雅关闭
-	if err := coord.Stop(ctx); err != nil {
+	if err := runtime.Stop(ctx); err != nil {
 		log.Printf("Error during shutdown: %v", err)
 	}
 

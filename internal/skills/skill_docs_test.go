@@ -16,7 +16,6 @@ func TestCoreSkillsHaveClaudeStyleSkillDocs(t *testing.T) {
 		"alerting",
 		"metrics-collection",
 		"network-diagnosis",
-		"container-management",
 		"database-operation",
 		"file-operation",
 		"notification",
