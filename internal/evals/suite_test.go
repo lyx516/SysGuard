@@ -340,10 +340,10 @@ func TestReadmeContainsAgentEvaluationSummary(t *testing.T) {
 	readme := readProjectFile(t, "README.md")
 	for _, marker := range []string{
 		"## Agent 场景评测结果",
-		"场景通过率",
+		"真实 LLM replay eval",
 		"工具调用准确率",
 		"平均 ReAct 轮数",
-		"go test ./internal/evals -run TestAgentScenarioEvaluation -count=1 -v",
+		"go test ./internal/evals -run TestLiveLLMReplayEvaluation -count=1 -v",
 		"service_down_ai_path",
 	} {
 		if !strings.Contains(readme, marker) {

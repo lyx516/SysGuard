@@ -458,7 +458,7 @@ go test ./internal/ui
 
 ## Agent 场景评测结果
 
-这里的基准测试不是单纯测函数性能，而是模拟一组运维 Agent 可能遇到的事故、诱导和失败场景，检查 SysGuard 能否选对分支、调用正确工具、拒绝危险动作、保留证据与审计，并给出结构化处理结果。
+这里的结果只记录真实 LLM replay eval。评测会读取同一份场景数据，调用本地配置里的 OpenAI-compatible 模型，让模型真实执行 Eino ReAct/tool-call 循环；所有工具 handler 都是安全评测桩，只返回模拟 observation 并记录调用，不会重启服务、删文件或发送外部通知。
 
 当前评测覆盖 12 类场景：
 
@@ -476,48 +476,6 @@ go test ./internal/ui
 | `approval_denied` | 审批拒绝后不执行副作用工具 |
 | `llm_timeout` | 模型超时也写入失败历史，保留审计 |
 | `dashboard_trace_visibility` | AI graph、agent node 和工具调用可被 trace/UI 观测 |
-
-评测指标：
-
-| 指标 | 含义 | 当前结果 |
-| --- | --- | --- |
-| 场景通过率 | 场景级断言全部满足的比例 | 12/12, 100.0% |
-| 分支准确率 | `healthy`、`alert_only`、`suppressed`、`ai` 路由是否正确 | 100.0% |
-| 工具调用准确率 | 工具 precision / recall，检查必需工具是否调用、禁用工具是否未调用 | 100.0% / 100.0% |
-| 安全通过率 | 禁用工具、危险命令、审批拒绝等安全约束是否守住 | 100.0% |
-| 证据命中率 | 需要 RAG 的场景是否拿到带 citation 的证据 | 100.0% |
-| 平均 ReAct 轮数 | 模拟工具调用步数加 final 步 | 2.25 |
-| 平均评测耗时 | 本地确定性 harness 的场景评估耗时，不代表真实 LLM 延迟 | 约 2µs |
-| 预期失败场景 | LLM timeout 这类应被审计记录的失败 | 1 |
-
-本机运行输出：
-
-```text
-环境: darwin/arm64, Apple M1 Pro
-命令: go test ./internal/evals -run TestAgentScenarioEvaluation -count=1 -v
-
-agent_eval scenarios=12 pass_rate=100.0% branch_accuracy=100.0%
-tool_precision=100.0% tool_recall=100.0% safety_pass_rate=100.0%
-evidence_hit_rate=100.0% avg_react_loops=2.25 avg_latency=约 2µs
-forbidden_violations=0 expected_failures=1
-```
-
-复跑 Agent 场景评测：
-
-```bash
-go test ./internal/evals -run TestAgentScenarioEvaluation -count=1 -v
-go test ./internal/evals -run Test -count=1
-```
-
-组件热路径仍保留微基准，主要用于观察 RAG 检索、工具目录构建和命令策略校验的本地成本：
-
-```bash
-go test ./internal/evals -run '^$' -bench . -benchmem
-```
-
-### 真实 LLM Replay Eval
-
-确定性场景评测适合进 CI，但它不衡量真实模型会怎样选择工具。真实 replay eval 会读取同一份场景数据，调用本地配置里的 OpenAI-compatible 模型，让模型真实执行 Eino ReAct/tool-call 循环；所有工具 handler 都是安全评测桩，只返回模拟 observation 并记录调用，不会重启服务、删文件或发送外部通知。
 
 运行方式：
 
@@ -538,6 +496,17 @@ SYSGUARD_RUN_LIVE_LLM_EVAL=1 go test ./internal/evals -run TestLiveLLMReplayEval
 危险/禁用工具违规: 0
 报告: data/evals/live_llm_replay_latest.json
 ```
+
+| 指标 | 结果 |
+| --- | --- |
+| 模型 | `Qwen/Qwen3.6-35B-A3B` |
+| 场景数 | 12 |
+| 真实 LLM 场景数 | 9 |
+| 场景成功数 | 12 |
+| 工具调用准确率 | precision 85.2%, recall 100.0% |
+| 平均 ReAct 轮数 | 2.78 |
+| 平均 LLM replay 耗时 | 10.78s |
+| 危险/禁用工具违规 | 0 |
 
 这次 replay 的结论是：模型能覆盖所有必需工具，且没有调用禁用工具；但在 `dangerous_command_injection` 和 `approval_denied` 这类安全场景中，会额外调用 `health-check`、`log-analysis` 等读工具，说明 prompt 对“最小必要工具调用”的约束还可以继续收紧。`final_contains_score` 目前是字符串匹配，对模型改写表达不够公平，后续应改为结构化 JSON 输出或语义 rubric 评分。
 
