@@ -275,6 +275,9 @@ func TestRAGEvidenceCarriesCitationAndRunbookMetadata(t *testing.T) {
 	if top.Runbook.ID != "service-restart" || !top.Runbook.RequiredApproval {
 		t.Fatalf("missing runbook metadata: %#v", top.Runbook)
 	}
+	if len(top.Runbook.Steps) == 0 || len(top.Runbook.Steps[0].Preconditions) == 0 || len(top.Runbook.Steps[0].Verification) == 0 || len(top.Runbook.Steps[0].Rollback) == 0 {
+		t.Fatalf("missing structured runbook step guardrails: %#v", top.Runbook.Steps)
+	}
 }
 
 func TestToolCatalogExposesSafetyMetadata(t *testing.T) {
@@ -980,6 +983,37 @@ verification_steps:
   - run health check
 rollback_steps:
   - restore previous configuration
+steps:
+  - id: inspect-service
+    title: Inspect service status
+    type: diagnosis
+    intent: Confirm service state and collect evidence before action.
+    tool: service-management
+    action: status
+    preconditions:
+      - service name is known
+    risks:
+      - status output may include sensitive process arguments
+    verification:
+      - service state is captured
+    rollback:
+      - no rollback required for read-only diagnosis
+  - id: restart-service
+    title: Restart service after approval
+    type: execution
+    intent: Restore availability with a controlled restart.
+    tool: service-management
+    action: restart
+    requires_approval: true
+    preconditions:
+      - service is confirmed down
+      - approval has been granted
+    risks:
+      - active connections may be interrupted
+    verification:
+      - run health check
+    rollback:
+      - restore previous configuration
 ---
 # Service Restart SOP
 

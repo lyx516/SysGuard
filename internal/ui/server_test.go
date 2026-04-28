@@ -10,6 +10,7 @@ import (
 
 	"github.com/sysguard/sysguard/internal/config"
 	"github.com/sysguard/sysguard/internal/monitor"
+	"github.com/sysguard/sysguard/internal/orchestration"
 )
 
 func TestServerExposesDashboardResourceEndpoints(t *testing.T) {
@@ -25,6 +26,7 @@ func TestServerExposesDashboardResourceEndpoints(t *testing.T) {
 		{path: "/api/tools", key: "recent"},
 		{path: "/api/logs", key: "recent"},
 		{path: "/api/history", key: "recent"},
+		{path: "/api/runs", key: "recent"},
 		{path: "/api/documents", key: "items"},
 	}
 
@@ -44,6 +46,41 @@ func TestServerExposesDashboardResourceEndpoints(t *testing.T) {
 				t.Fatalf("response missing key %q: %#v", tc.key, body)
 			}
 		})
+	}
+}
+
+func TestServerExposesRunRecords(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.Storage.RunsPath = dir + "/runs.json"
+	store, err := orchestration.NewRunStore(cfg.Storage.RunsPath)
+	if err != nil {
+		t.Fatalf("new run store: %v", err)
+	}
+	state := orchestration.NewState(orchestration.TriggerManualCheck)
+	state.Branch = orchestration.BranchAlertOnly
+	state.CompletedAt = state.StartedAt.Add(time.Second)
+	if err := store.Upsert(context.Background(), state, orchestration.RunStatusCompleted); err != nil {
+		t.Fatalf("upsert run: %v", err)
+	}
+
+	collector := NewCollector(cfg, nil, nil, nil)
+	server := NewServer(":0", collector)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/runs/"+state.RunID, nil)
+	res := httptest.NewRecorder()
+	server.mux.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", res.Code, res.Body.String())
+	}
+	var body orchestration.RunRecord
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response is not run JSON: %v", err)
+	}
+	if body.RunID != state.RunID || body.Status != orchestration.RunStatusCompleted {
+		t.Fatalf("unexpected run body: %#v", body)
 	}
 }
 

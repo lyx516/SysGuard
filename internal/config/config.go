@@ -62,6 +62,7 @@ type ObservabilityConfig struct {
 type StorageConfig struct {
 	HistoryPath string
 	LogPath     string
+	RunsPath    string
 }
 
 type UIConfig struct {
@@ -121,6 +122,7 @@ func Default() *Config {
 		Storage: StorageConfig{
 			HistoryPath: "./data/history.json",
 			LogPath:     "./logs/sysguard.log",
+			RunsPath:    "./data/runs.json",
 		},
 		UI: UIConfig{
 			Addr: "127.0.0.1:8080",
@@ -255,6 +257,9 @@ func Load(path string) (*Config, error) {
 	if v := values["storage.history_path"]; v != "" {
 		cfg.Storage.HistoryPath = v
 	}
+	if v := values["storage.runs_path"]; v != "" {
+		cfg.Storage.RunsPath = v
+	}
 	if v := values["logging.output"]; v != "" {
 		cfg.Storage.LogPath = v
 	}
@@ -387,6 +392,7 @@ func normalizePaths(cfg *Config) {
 	cfg.Observability.TraceLogPath = absPath(cfg.Observability.TraceLogPath)
 	cfg.Storage.HistoryPath = absPath(cfg.Storage.HistoryPath)
 	cfg.Storage.LogPath = absPath(cfg.Storage.LogPath)
+	cfg.Storage.RunsPath = absPath(cfg.Storage.RunsPath)
 }
 
 func absPath(value string) string {

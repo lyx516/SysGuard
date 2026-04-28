@@ -181,9 +181,11 @@ func (r *Runtime) agentUserPrompt(state *State) string {
 			"tool_failure_handling": "treat success=false tool results as observations and continue diagnosis when possible",
 		},
 		Contract: map[string]any{
-			"must_use_citations": true,
-			"allowed_sources":    []string{"sop_evidence", "history", "tool_observations"},
-			"no_evidence_rule":   "if evidence is missing or irrelevant, say so and avoid unsupported remediation",
+			"must_use_citations":       true,
+			"prefer_structured_steps":  "when SOP runbook steps are present, follow their preconditions, risks, verification, and rollback guidance before acting",
+			"allowed_sources":          []string{"sop_evidence", "history", "tool_observations"},
+			"no_evidence_rule":         "if evidence is missing or irrelevant, say so and avoid unsupported remediation",
+			"side_effecting_step_rule": "do not execute side-effecting steps unless the step preconditions are met and approval/dry-run policy allows it",
 		},
 		Final: map[string]string{
 			"diagnosis":     "root cause or current best hypothesis",

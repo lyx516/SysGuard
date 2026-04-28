@@ -133,7 +133,7 @@ const indexHTML = `<!doctype html>
     }
     .healthy, .completed { color: var(--good); background: #e9f7f1; border-color: #b8e2d1; }
     .running, .warning, .degraded { color: var(--warn); background: #fff7df; border-color: #ead589; }
-    .error, .down { color: var(--bad); background: #fdebec; border-color: #f1b9bd; }
+    .error, .down, .failed { color: var(--bad); background: #fdebec; border-color: #f1b9bd; }
     .standby, .info, .started { color: #4a4f58; background: #f0f2f5; border-color: #d7dbe1; }
     .toolbar {
       display: flex;
@@ -279,6 +279,7 @@ const indexHTML = `<!doctype html>
       <button class="nav" data-view="docs-view">历史文档</button>
       <button class="nav" data-view="logs-view">日志</button>
       <button class="nav" data-view="history-view">修复历史</button>
+      <button class="nav" data-view="runs-view">运行记录</button>
     </nav>
 
     <div>
@@ -286,7 +287,7 @@ const indexHTML = `<!doctype html>
         <section class="span-3 metric"><div><p class="muted">健康分</p><strong id="score">--</strong></div><span id="health-pill" class="pill standby">等待</span></section>
         <section class="span-3 metric"><div><p class="muted">Agent</p><strong id="agent-count">--</strong></div><span class="pill info">运行态</span></section>
         <section class="span-3 metric"><div><p class="muted">工具调用</p><strong id="tool-count">--</strong></div><span id="tool-errors" class="pill standby">-- 错误</span></section>
-        <section class="span-3 metric"><div><p class="muted">文档</p><strong id="doc-count">--</strong></div><span id="history-success" class="pill completed">-- 修复</span></section>
+        <section class="span-3 metric"><div><p class="muted">运行记录</p><strong id="run-count">--</strong></div><span id="run-failures" class="pill completed">-- 失败</span></section>
 
         <section class="span-4">
           <h2>系统占用</h2>
@@ -351,6 +352,20 @@ const indexHTML = `<!doctype html>
           <div id="history" class="list"></div>
         </section>
       </div>
+
+      <div id="runs-view" class="grid view">
+        <section class="span-12">
+          <h2>Graph 运行记录</h2>
+          <div class="toolbar">
+            <input id="run-search" placeholder="搜索 run id、分支、异常、结论">
+            <select id="run-status"><option value="">全部状态</option><option value="running">running</option><option value="completed">completed</option><option value="failed">failed</option></select>
+          </div>
+          <table>
+            <thead><tr><th>Run</th><th>状态</th><th>分支</th><th>触发</th><th>健康分</th><th>异常</th></tr></thead>
+            <tbody id="runs"></tbody>
+          </table>
+        </section>
+      </div>
     </div>
   </main>
 
@@ -388,8 +403,9 @@ const indexHTML = `<!doctype html>
       $('tool-count').textContent = snapshot.tools.total;
       $('tool-errors').textContent = snapshot.tools.errors + ' 错误';
       $('tool-errors').className = 'pill ' + (snapshot.tools.errors ? 'error' : 'completed');
-      $('history-success').textContent = snapshot.history.success + ' 修复';
-      $('doc-count').textContent = snapshot.documents.total;
+      $('run-count').textContent = snapshot.runs.total;
+      $('run-failures').textContent = snapshot.runs.failed + ' 失败';
+      $('run-failures').className = 'pill ' + (snapshot.runs.failed ? 'error' : 'completed');
 
       renderMetrics(snapshot);
       renderTimeline(snapshot.timeline || []);
@@ -398,6 +414,7 @@ const indexHTML = `<!doctype html>
       renderDocuments();
       renderLogs();
       renderHistory();
+      renderRuns();
       $('connection').textContent = 'A2UI 实时数据已连接，最近更新 ' + fmtTime(snapshot.generated_at) + '。';
     }
 
@@ -461,6 +478,16 @@ const indexHTML = `<!doctype html>
       ).join('') || '<p class="muted">暂无匹配的修复历史。</p>';
     }
 
+    function renderRuns() {
+      if (!state) return;
+      const query = $('run-search').value;
+      const status = $('run-status').value;
+      const runs = (state.runs.recent || []).filter((run) => (!status || run.status === status) && match([run.run_id, run.status, run.branch, run.trigger, run.anomaly, run.agent_final, run.agent_error].join(' '), query));
+      $('runs').innerHTML = runs.map((run) =>
+        '<tr class="clickable" data-detail="run" data-id="' + escapeHTML(run.run_id) + '"><td>' + escapeHTML(run.run_id) + '<p class="muted">' + fmtTime(run.started_at) + '</p></td><td>' + pill(run.status) + '</td><td>' + escapeHTML(run.branch) + '</td><td>' + escapeHTML(run.trigger) + '</td><td>' + Number(run.health_score || 0).toFixed(1) + '</td><td>' + escapeHTML(run.anomaly || '无') + '</td></tr>'
+      ).join('') || '<tr><td colspan="6" class="muted">暂无匹配的 graph 运行。</td></tr>';
+    }
+
     function openDrawer(title, subtitle, html) {
       $('drawer-title').textContent = title;
       $('drawer-subtitle').textContent = subtitle || '';
@@ -492,6 +519,10 @@ const indexHTML = `<!doctype html>
       if (kind === 'history') {
         const record = (state.history.recent || []).find((item) => item.id === id);
         openDrawer(record.solution, record.description, '<p>' + pill(record.success ? 'completed' : 'error') + ' ' + fmtTime(record.timestamp) + '</p><h3>执行步骤</h3><div class="pre">' + escapeHTML((record.steps || []).join('\\n') || '无步骤') + '</div>');
+      }
+      if (kind === 'run') {
+        const run = (state.runs.recent || []).find((item) => item.run_id === id);
+        openDrawer(run.run_id, fmtTime(run.started_at), '<p>' + pill(run.status) + ' 分支 ' + escapeHTML(run.branch) + ' / 触发 ' + escapeHTML(run.trigger) + '</p><h3>异常</h3><div class="pre">' + escapeHTML(run.anomaly || '无异常') + '</div><h3>Agent 输出</h3><div class="pre">' + escapeHTML(run.agent_final || run.agent_error || '无') + '</div><h3>工具与验证</h3><div class="pre">' + escapeHTML('tools: ' + (run.tools || []).join(', ') + '\\nverification: ' + (run.verification || '无') + '\\nhistory_written: ' + run.history_written) + '</div>');
       }
       if (kind === 'log') {
         const log = (state.logs.recent || [])[Number(id)];
@@ -529,6 +560,7 @@ const indexHTML = `<!doctype html>
     ['doc-search','doc-kind'].forEach((id) => $(id).addEventListener('input', renderDocuments));
     ['log-search','log-level'].forEach((id) => $(id).addEventListener('input', renderLogs));
     ['history-search','history-status'].forEach((id) => $(id).addEventListener('input', renderHistory));
+    ['run-search','run-status'].forEach((id) => $(id).addEventListener('input', renderRuns));
     $('drawer-close').addEventListener('click', closeDrawer);
     $('overlay').addEventListener('click', closeDrawer);
     $('open-a2ui').addEventListener('click', openA2UI);

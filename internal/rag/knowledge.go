@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // KnowledgeBase 知识库，存储和检索运维手册和 SOP
@@ -26,14 +28,31 @@ type Document struct {
 }
 
 type RunbookMetadata struct {
-	ID                string   `json:"id,omitempty"`
-	RiskLevel         string   `json:"risk_level,omitempty"`
-	RequiredApproval  bool     `json:"required_approval,omitempty"`
-	Signals           []string `json:"signals,omitempty"`
-	DiagnosisSteps    []string `json:"diagnosis_steps,omitempty"`
-	ExecutionSteps    []string `json:"execution_steps,omitempty"`
-	VerificationSteps []string `json:"verification_steps,omitempty"`
-	RollbackSteps     []string `json:"rollback_steps,omitempty"`
+	ID                string        `json:"id,omitempty" yaml:"id,omitempty"`
+	RiskLevel         string        `json:"risk_level,omitempty" yaml:"risk_level,omitempty"`
+	RequiredApproval  bool          `json:"required_approval,omitempty" yaml:"required_approval,omitempty"`
+	Signals           []string      `json:"signals,omitempty" yaml:"signals,omitempty"`
+	DiagnosisSteps    []string      `json:"diagnosis_steps,omitempty" yaml:"diagnosis_steps,omitempty"`
+	ExecutionSteps    []string      `json:"execution_steps,omitempty" yaml:"execution_steps,omitempty"`
+	VerificationSteps []string      `json:"verification_steps,omitempty" yaml:"verification_steps,omitempty"`
+	RollbackSteps     []string      `json:"rollback_steps,omitempty" yaml:"rollback_steps,omitempty"`
+	Steps             []RunbookStep `json:"steps,omitempty" yaml:"steps,omitempty"`
+}
+
+type RunbookStep struct {
+	ID               string   `json:"id,omitempty" yaml:"id,omitempty"`
+	Title            string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Type             string   `json:"type,omitempty" yaml:"type,omitempty"`
+	Intent           string   `json:"intent,omitempty" yaml:"intent,omitempty"`
+	Action           string   `json:"action,omitempty" yaml:"action,omitempty"`
+	Command          string   `json:"command,omitempty" yaml:"command,omitempty"`
+	Tool             string   `json:"tool,omitempty" yaml:"tool,omitempty"`
+	Parameters       []string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Preconditions    []string `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
+	Risks            []string `json:"risks,omitempty" yaml:"risks,omitempty"`
+	RequiresApproval bool     `json:"requires_approval,omitempty" yaml:"requires_approval,omitempty"`
+	Verification     []string `json:"verification,omitempty" yaml:"verification,omitempty"`
+	Rollback         []string `json:"rollback,omitempty" yaml:"rollback,omitempty"`
 }
 
 type Citation struct {
@@ -146,45 +165,8 @@ func splitFrontMatter(content string) (string, RunbookMetadata) {
 
 func parseRunbookFrontMatter(block string) RunbookMetadata {
 	var meta RunbookMetadata
-	var currentList string
-	for _, raw := range strings.Split(block, "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "- ") {
-			item := strings.TrimSpace(strings.TrimPrefix(line, "- "))
-			switch currentList {
-			case "signals":
-				meta.Signals = append(meta.Signals, item)
-			case "diagnosis_steps":
-				meta.DiagnosisSteps = append(meta.DiagnosisSteps, item)
-			case "execution_steps":
-				meta.ExecutionSteps = append(meta.ExecutionSteps, item)
-			case "verification_steps":
-				meta.VerificationSteps = append(meta.VerificationSteps, item)
-			case "rollback_steps":
-				meta.RollbackSteps = append(meta.RollbackSteps, item)
-			}
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
-		currentList = ""
-		switch key {
-		case "id":
-			meta.ID = value
-		case "risk_level":
-			meta.RiskLevel = value
-		case "required_approval":
-			meta.RequiredApproval = value == "true"
-		case "signals", "diagnosis_steps", "execution_steps", "verification_steps", "rollback_steps":
-			currentList = key
-		}
+	if err := yaml.Unmarshal([]byte(block), &meta); err != nil {
+		return RunbookMetadata{}
 	}
 	return meta
 }

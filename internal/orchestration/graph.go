@@ -28,7 +28,9 @@ type Runtime struct {
 	graph       compose.Runnable[*State, *State]
 	callbacks   compose.Option
 	mu          sync.Mutex
+	runMu       sync.Mutex
 	lastHandled map[string]time.Time
+	runStore    *RunStore
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
 }
@@ -57,6 +59,13 @@ func NewRuntime(
 		obs:         obs,
 		callbacks:   compose.WithCallbacks(syseino.NewCallbackBridge(obs)),
 		lastHandled: make(map[string]time.Time),
+	}
+	if cfg.Storage.RunsPath != "" {
+		store, err := NewRunStore(cfg.Storage.RunsPath)
+		if err != nil {
+			return nil, err
+		}
+		r.runStore = store
 	}
 	if cfg.AI.Enabled {
 		if _, err := syseino.NewChatModel(ctx, cfg.AI); err != nil {
@@ -109,8 +118,14 @@ func (r *Runtime) Run(ctx context.Context, trigger Trigger) (*State, error) {
 }
 
 func (r *Runtime) RunState(ctx context.Context, state *State) (*State, error) {
+	r.runMu.Lock()
+	defer r.runMu.Unlock()
+
 	if state == nil {
 		state = NewState(TriggerPeriodic)
+	}
+	if r.runStore != nil {
+		_ = r.runStore.Upsert(ctx, state, RunStatusRunning)
 	}
 	out, err := r.graph.Invoke(ctx, state, r.callbacks)
 	if err != nil {
@@ -122,12 +137,32 @@ func (r *Runtime) RunState(ctx context.Context, state *State) (*State, error) {
 		}
 		out.CompletedAt = time.Now().UTC()
 		out, _ = r.persistResult(ctx, out)
+		if r.runStore != nil {
+			_ = r.runStore.Upsert(ctx, out, RunStatusFailed)
+		}
 		return out, err
 	}
 	if out != nil {
 		out.CompletedAt = time.Now().UTC()
+		if r.runStore != nil {
+			_ = r.runStore.Upsert(ctx, out, RunStatusCompleted)
+		}
 	}
 	return out, err
+}
+
+func (r *Runtime) ListRuns(ctx context.Context, limit int) ([]RunRecord, error) {
+	if r.runStore == nil {
+		return nil, nil
+	}
+	return r.runStore.List(ctx, limit)
+}
+
+func (r *Runtime) GetRun(ctx context.Context, runID string) (RunRecord, bool, error) {
+	if r.runStore == nil {
+		return RunRecord{}, false, nil
+	}
+	return r.runStore.Get(ctx, runID)
 }
 
 func (r *Runtime) Start(ctx context.Context) error {

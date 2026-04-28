@@ -22,6 +22,8 @@ services:
     - nginx
 execution:
   command_timeout: 90s
+storage:
+  runs_path: ./data/test-runs.json
 `
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -46,6 +48,9 @@ execution:
 	}
 	if cfg.Execution.CommandTimeout.String() != "1m30s" {
 		t.Fatalf("unexpected timeout: %s", cfg.Execution.CommandTimeout)
+	}
+	if filepath.Base(cfg.Storage.RunsPath) != "test-runs.json" {
+		t.Fatalf("unexpected runs path: %s", cfg.Storage.RunsPath)
 	}
 }
 

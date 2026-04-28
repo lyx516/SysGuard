@@ -41,6 +41,11 @@ type graphRunner interface {
 	Run(ctx context.Context, trigger orchestration.Trigger) (*orchestration.State, error)
 }
 
+type runLister interface {
+	ListRuns(ctx context.Context, limit int) ([]orchestration.RunRecord, error)
+	GetRun(ctx context.Context, runID string) (orchestration.RunRecord, bool, error)
+}
+
 type Snapshot struct {
 	GeneratedAt time.Time       `json:"generated_at"`
 	System      SystemOverview  `json:"system"`
@@ -48,6 +53,7 @@ type Snapshot struct {
 	Tools       ToolSummary     `json:"tools"`
 	Logs        LogSummary      `json:"logs"`
 	History     HistorySummary  `json:"history"`
+	Runs        RunSummary      `json:"runs"`
 	Documents   DocumentLibrary `json:"documents"`
 	Timeline    []TimelineEvent `json:"timeline"`
 }
@@ -126,6 +132,13 @@ type HistorySummary struct {
 	Success int                 `json:"success"`
 	Failed  int                 `json:"failed"`
 	Recent  []HistoryRecordView `json:"recent"`
+}
+
+type RunSummary struct {
+	Total   int                       `json:"total"`
+	Running int                       `json:"running"`
+	Failed  int                       `json:"failed"`
+	Recent  []orchestration.RunRecord `json:"recent"`
 }
 
 type HistoryRecordView struct {
@@ -212,6 +225,7 @@ func (c *Collector) snapshot(ctx context.Context, report *monitor.HealthReport) 
 				"check_interval": c.cfg.Monitor.CheckInterval.String(),
 				"trace_log":      c.cfg.Observability.TraceLogPath,
 				"history_path":   c.cfg.Storage.HistoryPath,
+				"runs_path":      c.cfg.Storage.RunsPath,
 			},
 			Collected: make(map[string]MetricView),
 		},
@@ -245,6 +259,7 @@ func (c *Collector) snapshot(ctx context.Context, report *monitor.HealthReport) 
 	snapshot.Agents = enrichAgents(snapshot.Agents, snapshot.Tools.Recent)
 	snapshot.Logs = readLogs(c.cfg.Storage.LogPath, sessionStart)
 	snapshot.History = c.collectHistory(ctx, sessionStart)
+	snapshot.Runs = c.collectRuns(ctx)
 	snapshot.Documents = c.collectDocuments()
 	snapshot.Timeline = mergeTimeline(snapshot.Timeline, snapshot.Tools.Recent, snapshot.Logs.Recent, snapshot.History.Recent)
 	normalizeSnapshot(snapshot)
@@ -517,6 +532,50 @@ func (c *Collector) collectHistory(ctx context.Context, since time.Time) History
 	return summary
 }
 
+func (c *Collector) collectRuns(ctx context.Context) RunSummary {
+	var records []orchestration.RunRecord
+	if lister, ok := c.runner.(runLister); ok {
+		listed, err := lister.ListRuns(ctx, maxRecentItems)
+		if err == nil {
+			records = listed
+		}
+	} else if c.cfg != nil && c.cfg.Storage.RunsPath != "" {
+		store, err := orchestration.NewRunStore(c.cfg.Storage.RunsPath)
+		if err == nil {
+			records, _ = store.List(ctx, maxRecentItems)
+		}
+	}
+	summary := RunSummary{Total: len(records)}
+	for _, record := range records {
+		if record.Status == orchestration.RunStatusRunning {
+			summary.Running++
+		}
+		if record.Status == orchestration.RunStatusFailed {
+			summary.Failed++
+		}
+	}
+	summary.Recent = records
+	return summary
+}
+
+func (c *Collector) Runs(ctx context.Context) (RunSummary, error) {
+	return c.collectRuns(ctx), nil
+}
+
+func (c *Collector) Run(ctx context.Context, runID string) (orchestration.RunRecord, bool, error) {
+	if lister, ok := c.runner.(runLister); ok {
+		return lister.GetRun(ctx, runID)
+	}
+	if c.cfg != nil && c.cfg.Storage.RunsPath != "" {
+		store, err := orchestration.NewRunStore(c.cfg.Storage.RunsPath)
+		if err != nil {
+			return orchestration.RunRecord{}, false, err
+		}
+		return store.Get(ctx, runID)
+	}
+	return orchestration.RunRecord{}, false, nil
+}
+
 func readLogs(path string, since time.Time) LogSummary {
 	if path == "" {
 		return LogSummary{}
@@ -786,6 +845,9 @@ func normalizeSnapshot(snapshot *Snapshot) {
 	}
 	if snapshot.History.Recent == nil {
 		snapshot.History.Recent = []HistoryRecordView{}
+	}
+	if snapshot.Runs.Recent == nil {
+		snapshot.Runs.Recent = []orchestration.RunRecord{}
 	}
 	if snapshot.Documents.ByKind == nil {
 		snapshot.Documents.ByKind = map[string]int{}

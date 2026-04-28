@@ -161,6 +161,7 @@ go build -o build/sysguard-ui ./cmd/sysguard-ui
 - trace 写入 `logs/trace.log`。
 - 运行日志写入 `logs/sysguard.log`。
 - 历史记录写入 `data/history.json`。
+- graph 运行记录写入 `data/runs.json`。
 
 ### 7. 运行 Dashboard
 
@@ -235,6 +236,7 @@ ai:
 
 storage:
   history_path: "./data/history.json"
+  runs_path: "./data/runs.json"
 
 logging:
   level: info
@@ -380,6 +382,42 @@ verification_steps:
   - verify service status
 rollback_steps:
   - restore previous configuration backup
+steps:
+  - id: inspect-service
+    title: Inspect service status
+    type: diagnosis
+    intent: Confirm the service state before any side-effecting action.
+    tool: service-management
+    action: status
+    preconditions:
+      - service name is known
+      - current phase is read-only diagnosis
+    risks:
+      - status output may include sensitive startup parameters
+    verification:
+      - status output was collected and summarized
+    rollback:
+      - no rollback required for read-only diagnosis
+  - id: restart-service
+    title: Restart service after approval
+    type: execution
+    intent: Restore availability after diagnosis supports restart.
+    tool: service-management
+    action: restart
+    requires_approval: true
+    preconditions:
+      - service is confirmed down
+      - recent logs do not indicate a config rollback is required first
+      - production approval has been granted
+    risks:
+      - active connections may be interrupted
+      - restart may fail again if the root cause is unchanged
+    verification:
+      - service status is active
+      - health check returns healthy
+    rollback:
+      - restore previous known-good configuration
+      - restart service and verify health again
 ---
 ```
 
@@ -391,7 +429,7 @@ rollback_steps:
 4. 按 cosine similarity 检索。
 5. 返回带 citation 的 `EvidenceChunk`。
 
-历史记录位于 `storage.history_path`。失败运行也会写入 history，便于审计 LLM 超时、工具失败、审批拒绝等情况。
+历史记录位于 `storage.history_path`。失败运行也会写入 history，便于审计 LLM 超时、工具失败、审批拒绝等情况。每次 graph 运行的状态快照位于 `storage.runs_path`，用于 UI/API 查询最近运行和排查并发触发。
 
 ## Dashboard 与 API
 
@@ -403,6 +441,8 @@ rollback_steps:
 | --- | --- | --- |
 | `GET` | `/api/snapshot` | 返回当前看板快照 |
 | `POST` | `/api/check` | 立即触发一次 graph 巡检，然后返回快照 |
+| `GET` | `/api/runs` | 返回最近 graph 运行记录 |
+| `GET` | `/api/runs/{run_id}` | 返回单次 graph 运行详情 |
 | `GET` | `/api/stream` | SSE 实时事件流 |
 | `GET` | `/a2ui/render` | 返回 A2UI render tree 与数据模型 |
 

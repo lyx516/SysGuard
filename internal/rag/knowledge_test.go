@@ -53,6 +53,39 @@ verification_steps:
   - run health check
 rollback_steps:
   - restore previous configuration
+steps:
+  - id: diagnose-status
+    title: Check service status
+    type: diagnosis
+    intent: Confirm whether the service manager reports the service as failed.
+    tool: service-management
+    action: status
+    preconditions:
+      - service name is known
+    risks:
+      - status output may include sensitive environment values
+    verification:
+      - status command completed successfully
+    rollback:
+      - no rollback required for read-only diagnosis
+  - id: restart-service
+    title: Restart service after approval
+    type: execution
+    intent: Restore service availability with a controlled restart.
+    tool: service-management
+    action: restart
+    requires_approval: true
+    preconditions:
+      - diagnosis confirms the service is down
+      - approval has been granted
+    risks:
+      - active connections may be interrupted
+    verification:
+      - run health check
+      - inspect recent service logs
+    rollback:
+      - restore previous configuration
+      - restart service again after rollback
 ---
 # Service Down
 
@@ -79,5 +112,15 @@ When a service is down, inspect status and logs before privileged action.
 	}
 	if len(meta.Signals) != 1 || len(meta.DiagnosisSteps) != 1 || len(meta.VerificationSteps) != 1 || len(meta.RollbackSteps) != 1 {
 		t.Fatalf("front matter lists were not parsed: %#v", meta)
+	}
+	if len(meta.Steps) != 2 {
+		t.Fatalf("structured steps count = %d, want 2: %#v", len(meta.Steps), meta.Steps)
+	}
+	step := meta.Steps[1]
+	if step.ID != "restart-service" || step.Type != "execution" || !step.RequiresApproval {
+		t.Fatalf("unexpected structured step metadata: %#v", step)
+	}
+	if len(step.Preconditions) != 2 || len(step.Risks) != 1 || len(step.Verification) != 2 || len(step.Rollback) != 2 {
+		t.Fatalf("structured step guardrails were not parsed: %#v", step)
 	}
 }

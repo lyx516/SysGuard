@@ -60,6 +60,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/tools", s.withAuth(s.requireMethod(http.MethodGet, s.handleTools)))
 	s.mux.HandleFunc("/api/logs", s.withAuth(s.requireMethod(http.MethodGet, s.handleLogs)))
 	s.mux.HandleFunc("/api/history", s.withAuth(s.requireMethod(http.MethodGet, s.handleHistory)))
+	s.mux.HandleFunc("/api/runs", s.withAuth(s.requireMethod(http.MethodGet, s.handleRuns)))
+	s.mux.HandleFunc("/api/runs/", s.withAuth(s.requireMethod(http.MethodGet, s.handleRun)))
 	s.mux.HandleFunc("/api/documents", s.withAuth(s.requireMethod(http.MethodGet, s.handleDocuments)))
 	s.mux.HandleFunc("/api/check", s.withAuth(s.requireMethod(http.MethodPost, s.handleCheck)))
 	s.mux.HandleFunc("/api/stream", s.withAuth(s.requireMethod(http.MethodGet, s.handleStream)))
@@ -141,6 +143,33 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, snapshot.History)
+}
+
+func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
+	runs, err := s.collector.Runs(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, runs)
+}
+
+func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	runID := strings.TrimPrefix(r.URL.Path, "/api/runs/")
+	if strings.TrimSpace(runID) == "" || strings.Contains(runID, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	run, ok, err := s.collector.Run(r.Context(), runID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, run)
 }
 
 func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
