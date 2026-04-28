@@ -81,6 +81,7 @@ func CoreSkillToolDefinitions(registry *SkillRegistry) ([]ToolDefinition, error)
 				"service":         {Type: "string"},
 				"lines":           {Type: "number"},
 				"allow_dangerous": {Type: "boolean", Description: "Requires explicit approval for state-changing operations"},
+				"approval_id":     {Type: "string", Description: "Approved request ID required for state-changing operations when approval is enabled"},
 			},
 		}),
 		skillTool(registry, "database-operation", PermissionReadOnly, "database", false, false, []string{"linux", "darwin"}, JSONSchema{

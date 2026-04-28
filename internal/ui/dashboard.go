@@ -15,6 +15,7 @@ import (
 	"github.com/sysguard/sysguard/internal/observability"
 	"github.com/sysguard/sysguard/internal/orchestration"
 	"github.com/sysguard/sysguard/internal/rag"
+	"github.com/sysguard/sysguard/internal/security"
 )
 
 const maxRecentItems = 12
@@ -54,6 +55,7 @@ type Snapshot struct {
 	Logs        LogSummary      `json:"logs"`
 	History     HistorySummary  `json:"history"`
 	Runs        RunSummary      `json:"runs"`
+	Approvals   ApprovalSummary `json:"approvals"`
 	Documents   DocumentLibrary `json:"documents"`
 	Timeline    []TimelineEvent `json:"timeline"`
 }
@@ -141,6 +143,12 @@ type RunSummary struct {
 	Recent  []orchestration.RunRecord `json:"recent"`
 }
 
+type ApprovalSummary struct {
+	Total   int                        `json:"total"`
+	Pending int                        `json:"pending"`
+	Recent  []security.ApprovalRequest `json:"recent"`
+}
+
 type HistoryRecordView struct {
 	ID          string    `json:"id"`
 	Description string    `json:"description"`
@@ -226,6 +234,7 @@ func (c *Collector) snapshot(ctx context.Context, report *monitor.HealthReport) 
 				"trace_log":      c.cfg.Observability.TraceLogPath,
 				"history_path":   c.cfg.Storage.HistoryPath,
 				"runs_path":      c.cfg.Storage.RunsPath,
+				"approvals_path": c.cfg.Storage.ApprovalsPath,
 			},
 			Collected: make(map[string]MetricView),
 		},
@@ -260,6 +269,7 @@ func (c *Collector) snapshot(ctx context.Context, report *monitor.HealthReport) 
 	snapshot.Logs = readLogs(c.cfg.Storage.LogPath, sessionStart)
 	snapshot.History = c.collectHistory(ctx, sessionStart)
 	snapshot.Runs = c.collectRuns(ctx)
+	snapshot.Approvals = c.collectApprovals(ctx)
 	snapshot.Documents = c.collectDocuments()
 	snapshot.Timeline = mergeTimeline(snapshot.Timeline, snapshot.Tools.Recent, snapshot.Logs.Recent, snapshot.History.Recent)
 	normalizeSnapshot(snapshot)
@@ -576,6 +586,43 @@ func (c *Collector) Run(ctx context.Context, runID string) (orchestration.RunRec
 	return orchestration.RunRecord{}, false, nil
 }
 
+func (c *Collector) collectApprovals(ctx context.Context) ApprovalSummary {
+	store, err := c.approvalStore()
+	if err != nil || store == nil {
+		return ApprovalSummary{}
+	}
+	items, err := store.List(ctx, maxRecentItems)
+	if err != nil {
+		return ApprovalSummary{}
+	}
+	summary := ApprovalSummary{Total: len(items), Recent: items}
+	for _, item := range items {
+		if item.Status == security.ApprovalPending {
+			summary.Pending++
+		}
+	}
+	return summary
+}
+
+func (c *Collector) Approvals(ctx context.Context) (ApprovalSummary, error) {
+	return c.collectApprovals(ctx), nil
+}
+
+func (c *Collector) DecideApproval(ctx context.Context, id string, approved bool, actor string) (security.ApprovalRequest, error) {
+	store, err := c.approvalStore()
+	if err != nil {
+		return security.ApprovalRequest{}, err
+	}
+	return store.Decide(ctx, id, approved, actor)
+}
+
+func (c *Collector) approvalStore() (*security.ApprovalStore, error) {
+	if c.cfg == nil || c.cfg.Storage.ApprovalsPath == "" {
+		return nil, nil
+	}
+	return security.NewApprovalStore(c.cfg.Storage.ApprovalsPath)
+}
+
 func readLogs(path string, since time.Time) LogSummary {
 	if path == "" {
 		return LogSummary{}
@@ -848,6 +895,9 @@ func normalizeSnapshot(snapshot *Snapshot) {
 	}
 	if snapshot.Runs.Recent == nil {
 		snapshot.Runs.Recent = []orchestration.RunRecord{}
+	}
+	if snapshot.Approvals.Recent == nil {
+		snapshot.Approvals.Recent = []security.ApprovalRequest{}
 	}
 	if snapshot.Documents.ByKind == nil {
 		snapshot.Documents.ByKind = map[string]int{}

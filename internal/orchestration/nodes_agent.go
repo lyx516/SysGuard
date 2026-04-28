@@ -176,7 +176,7 @@ func (r *Runtime) agentUserPrompt(state *State) string {
 		History: state.Evidence.History,
 		Policy: map[string]any{
 			"read_only_first":       true,
-			"requires_approval":     "privileged or side-effecting tools require explicit approval and must respect dry-run mode",
+			"requires_approval":     "privileged or side-effecting tools require explicit approval; if a tool returns approval_required, surface the approval_id and wait for human approval before retrying with that approval_id",
 			"unknown_tools":         "never invent tools; use only registered SysGuard tools",
 			"tool_failure_handling": "treat success=false tool results as observations and continue diagnosis when possible",
 		},

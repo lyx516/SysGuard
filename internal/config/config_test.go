@@ -24,6 +24,7 @@ execution:
   command_timeout: 90s
 storage:
   runs_path: ./data/test-runs.json
+  approvals_path: ./data/test-approvals.json
 `
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -51,6 +52,9 @@ storage:
 	}
 	if filepath.Base(cfg.Storage.RunsPath) != "test-runs.json" {
 		t.Fatalf("unexpected runs path: %s", cfg.Storage.RunsPath)
+	}
+	if filepath.Base(cfg.Storage.ApprovalsPath) != "test-approvals.json" {
+		t.Fatalf("unexpected approvals path: %s", cfg.Storage.ApprovalsPath)
 	}
 }
 

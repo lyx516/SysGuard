@@ -60,9 +60,10 @@ type ObservabilityConfig struct {
 }
 
 type StorageConfig struct {
-	HistoryPath string
-	LogPath     string
-	RunsPath    string
+	HistoryPath   string
+	LogPath       string
+	RunsPath      string
+	ApprovalsPath string
 }
 
 type UIConfig struct {
@@ -120,9 +121,10 @@ func Default() *Config {
 			TraceLogPath:  "./logs/trace.log",
 		},
 		Storage: StorageConfig{
-			HistoryPath: "./data/history.json",
-			LogPath:     "./logs/sysguard.log",
-			RunsPath:    "./data/runs.json",
+			HistoryPath:   "./data/history.json",
+			LogPath:       "./logs/sysguard.log",
+			RunsPath:      "./data/runs.json",
+			ApprovalsPath: "./data/approvals.json",
 		},
 		UI: UIConfig{
 			Addr: "127.0.0.1:8080",
@@ -260,6 +262,9 @@ func Load(path string) (*Config, error) {
 	if v := values["storage.runs_path"]; v != "" {
 		cfg.Storage.RunsPath = v
 	}
+	if v := values["storage.approvals_path"]; v != "" {
+		cfg.Storage.ApprovalsPath = v
+	}
 	if v := values["logging.output"]; v != "" {
 		cfg.Storage.LogPath = v
 	}
@@ -393,6 +398,7 @@ func normalizePaths(cfg *Config) {
 	cfg.Storage.HistoryPath = absPath(cfg.Storage.HistoryPath)
 	cfg.Storage.LogPath = absPath(cfg.Storage.LogPath)
 	cfg.Storage.RunsPath = absPath(cfg.Storage.RunsPath)
+	cfg.Storage.ApprovalsPath = absPath(cfg.Storage.ApprovalsPath)
 }
 
 func absPath(value string) string {

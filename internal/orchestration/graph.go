@@ -23,6 +23,7 @@ type Runtime struct {
 	historyKB   *rag.HistoryKnowledgeBase
 	monitor     *monitor.Monitor
 	interceptor *security.CommandInterceptor
+	approvals   *security.ApprovalStore
 	obs         *observability.GlobalCallback
 
 	graph       compose.Runnable[*State, *State]
@@ -66,6 +67,13 @@ func NewRuntime(
 			return nil, err
 		}
 		r.runStore = store
+	}
+	if cfg.Storage.ApprovalsPath != "" {
+		approvals, err := security.NewApprovalStore(cfg.Storage.ApprovalsPath)
+		if err != nil {
+			return nil, err
+		}
+		r.approvals = approvals
 	}
 	if cfg.AI.Enabled {
 		if _, err := syseino.NewChatModel(ctx, cfg.AI); err != nil {
@@ -224,6 +232,7 @@ func (r *Runtime) coreSkillDefinitions(ctx context.Context) ([]skills.ToolDefini
 		Config:      r.cfg,
 		Monitor:     r.monitor,
 		Interceptor: r.interceptor,
+		Approvals:   r.approvals,
 	}); err != nil {
 		return nil, err
 	}

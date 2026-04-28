@@ -4,11 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/sysguard/sysguard/internal/config"
 	"github.com/sysguard/sysguard/internal/monitor"
+	"github.com/sysguard/sysguard/internal/security"
 	"github.com/sysguard/sysguard/internal/workflow"
 )
 
@@ -238,5 +240,54 @@ func TestHealthAndMetricsSkillsUseMonitorDependency(t *testing.T) {
 	}
 	if len(metrics["components"].(map[string]monitor.ComponentStatus)) == 0 {
 		t.Fatalf("expected component metrics")
+	}
+}
+
+func TestServiceManagementCreatesApprovalInsteadOfExecutingSideEffect(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("state-changing service operations are linux-only")
+	}
+
+	cfg := config.Default()
+	cfg.Execution.DryRun = false
+	cfg.Security.EnableApproval = true
+	store, err := security.NewApprovalStore(filepath.Join(t.TempDir(), "approvals.json"))
+	if err != nil {
+		t.Fatalf("new approval store: %v", err)
+	}
+
+	skill := NewServiceManagementSkill(cfg, nil, store)
+	out, err := skill.Execute(context.Background(), &SkillInput{Params: map[string]interface{}{
+		"service":   "nginx",
+		"operation": "restart",
+	}})
+	if err != nil {
+		t.Fatalf("execute restart: %v", err)
+	}
+	if out.Success || out.Metadata["status"] != string(security.ApprovalPending) || out.Metadata["approval_id"] == "" {
+		t.Fatalf("expected pending approval output: %#v", out)
+	}
+}
+
+func TestServiceManagementDryRunSkipsApprovalAndExecution(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("state-changing service operations are linux-only")
+	}
+
+	cfg := config.Default()
+	cfg.Execution.DryRun = true
+	cfg.Security.EnableApproval = true
+	skill := NewServiceManagementSkill(cfg, nil, nil)
+	out, err := skill.Execute(context.Background(), &SkillInput{Params: map[string]interface{}{
+		"service":   "nginx",
+		"operation": "restart",
+	}})
+	if err != nil {
+		t.Fatalf("dry-run restart: %v", err)
+	}
+	if !out.Success {
+		t.Fatalf("dry-run should succeed: %#v", out)
 	}
 }

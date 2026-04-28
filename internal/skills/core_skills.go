@@ -28,6 +28,7 @@ type CoreSkillDependencies struct {
 	Config      *config.Config
 	Monitor     *monitor.Monitor
 	Interceptor *security.CommandInterceptor
+	Approvals   *security.ApprovalStore
 	HTTPClient  *http.Client
 }
 
@@ -51,7 +52,7 @@ func RegisterCoreSkills(registry *SkillRegistry, deps CoreSkillDependencies) err
 	coreSkills := []Skill{
 		NewLogAnalysisSkill(),
 		NewHealthCheckSkill(mon),
-		NewServiceManagementSkill(cfg, interceptor),
+		NewServiceManagementSkill(cfg, interceptor, deps.Approvals),
 		NewAlertingSkill(),
 		NewMetricsCollectionSkill(mon),
 		NewNetworkDiagnosisSkill(),
@@ -125,10 +126,11 @@ func (s *HealthCheckSkill) Execute(ctx context.Context, input *SkillInput) (*Ski
 type ServiceManagementSkill struct {
 	cfg         *config.Config
 	interceptor *security.CommandInterceptor
+	approvals   *security.ApprovalStore
 	executor    *utils.ShellExecutor
 }
 
-func NewServiceManagementSkill(cfg *config.Config, interceptor *security.CommandInterceptor) *ServiceManagementSkill {
+func NewServiceManagementSkill(cfg *config.Config, interceptor *security.CommandInterceptor, approvals *security.ApprovalStore) *ServiceManagementSkill {
 	timeout := 2 * time.Minute
 	if cfg != nil && cfg.Execution.CommandTimeout > 0 {
 		timeout = cfg.Execution.CommandTimeout
@@ -136,6 +138,7 @@ func NewServiceManagementSkill(cfg *config.Config, interceptor *security.Command
 	return &ServiceManagementSkill{
 		cfg:         cfg,
 		interceptor: interceptor,
+		approvals:   approvals,
 		executor:    utils.NewShellExecutor(timeout),
 	}
 }
@@ -174,11 +177,66 @@ func (s *ServiceManagementSkill) Execute(ctx context.Context, input *SkillInput)
 		command = fmt.Sprintf("pgrep -x %s", service)
 	}
 
+	if stateChangingServiceOperation(operation) {
+		if s.cfg != nil && s.cfg.Execution.DryRun {
+			return successOutput(&utils.ExecutionResult{
+				Command: command,
+				Stdout:  "dry-run: command not executed",
+				Success: true,
+			}), nil
+		}
+		if s.cfg != nil && s.cfg.Security.EnableApproval {
+			if s.approvals == nil {
+				return nil, fmt.Errorf("approval store is required for state-changing service operations")
+			}
+			approvalID := stringParam(params, "approval_id", "")
+			if approvalID == "" {
+				var expiresAt time.Time
+				if s.cfg.Security.ApprovalTimeout > 0 {
+					expiresAt = time.Now().UTC().Add(s.cfg.Security.ApprovalTimeout)
+				}
+				request, err := s.approvals.Create(ctx, security.ApprovalRequest{
+					Tool:      s.Name(),
+					Action:    operation,
+					Command:   command,
+					Reason:    "state-changing service operation requires approval",
+					Risk:      "service interruption or failed restart may affect availability",
+					ExpiresAt: expiresAt,
+					Metadata:  map[string]string{"service": service},
+				})
+				if err != nil {
+					return nil, err
+				}
+				return &SkillOutput{
+					Success: false,
+					Error:   fmt.Errorf("approval_required"),
+					Result:  request,
+					Metadata: map[string]string{
+						"approval_id": request.ID,
+						"status":      string(request.Status),
+					},
+				}, nil
+			}
+			if _, err := s.approvals.Consume(ctx, approvalID, command); err != nil {
+				return &SkillOutput{Success: false, Error: err, Metadata: map[string]string{"approval_id": approvalID}}, nil
+			}
+		}
+	}
+
 	result, err := executeManagedCommand(ctx, s.executor, s.interceptor, command, boolParam(params, "allow_dangerous", false))
 	if err != nil {
 		return nil, err
 	}
 	return successOutput(result), nil
+}
+
+func stateChangingServiceOperation(operation string) bool {
+	switch operation {
+	case "start", "stop", "restart":
+		return true
+	default:
+		return false
+	}
 }
 
 type Alert struct {

@@ -96,6 +96,7 @@ ai:
 storage:
   history_path: "./data/history.json"
   runs_path: "./data/runs.json"
+  approvals_path: "./data/approvals.json"
 
 # 容错配置
 fault_tolerance:

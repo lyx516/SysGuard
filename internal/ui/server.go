@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/history", s.withAuth(s.requireMethod(http.MethodGet, s.handleHistory)))
 	s.mux.HandleFunc("/api/runs", s.withAuth(s.requireMethod(http.MethodGet, s.handleRuns)))
 	s.mux.HandleFunc("/api/runs/", s.withAuth(s.requireMethod(http.MethodGet, s.handleRun)))
+	s.mux.HandleFunc("/api/approvals", s.withAuth(s.requireMethod(http.MethodGet, s.handleApprovals)))
+	s.mux.HandleFunc("/api/approvals/", s.withAuth(s.requireMethod(http.MethodPost, s.handleApprovalDecision)))
 	s.mux.HandleFunc("/api/documents", s.withAuth(s.requireMethod(http.MethodGet, s.handleDocuments)))
 	s.mux.HandleFunc("/api/check", s.withAuth(s.requireMethod(http.MethodPost, s.handleCheck)))
 	s.mux.HandleFunc("/api/stream", s.withAuth(s.requireMethod(http.MethodGet, s.handleStream)))
@@ -170,6 +172,40 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, run)
+}
+
+func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
+	approvals, err := s.collector.Approvals(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, approvals)
+}
+
+func (s *Server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/approvals/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var approved bool
+	switch parts[1] {
+	case "approve":
+		approved = true
+	case "deny":
+		approved = false
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	req, err := s.collector.DecideApproval(r.Context(), parts[0], approved, "ui")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, req)
 }
 
 func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {
