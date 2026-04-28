@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="SysGuard social preview">
+  <rect width="1280" height="640" fill="#f6f7f9"/>
+  <rect x="64" y="64" width="1152" height="512" rx="28" fill="#ffffff" stroke="#d9dde3"/>
+  <rect x="96" y="96" width="1088" height="72" rx="12" fill="#0f766e"/>
+  <text x="128" y="143" fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="800">SysGuard</text>
+  <text x="324" y="142" fill="#d7f7ef" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="22">Local AI SRE Agent</text>
+
+  <text x="104" y="234" fill="#171717" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="44" font-weight="800">Inspect. Diagnose. Approve. Verify.</text>
+  <text x="104" y="282" fill="#60646c" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="24">Go + Eino agent for SOP-grounded incident response and auditable graph runs.</text>
+
+  <g transform="translate(104 340)">
+    <rect width="240" height="132" rx="14" fill="#e9f7f1" stroke="#b8e2d1"/>
+    <text x="24" y="44" fill="#12805c" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="700">Health Graph</text>
+    <text x="24" y="86" fill="#171717" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="800">inspect -> route</text>
+  </g>
+
+  <g transform="translate(376 340)">
+    <rect width="240" height="132" rx="14" fill="#fff7df" stroke="#ead589"/>
+    <text x="24" y="44" fill="#9a6700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="700">Runbook RAG</text>
+    <text x="24" y="86" fill="#171717" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="800">SOP citations</text>
+  </g>
+
+  <g transform="translate(648 340)">
+    <rect width="240" height="132" rx="14" fill="#fdebec" stroke="#f1b9bd"/>
+    <text x="24" y="44" fill="#c62828" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="700">Approval Queue</text>
+    <text x="24" y="86" fill="#171717" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="800">dry-run first</text>
+  </g>
+
+  <g transform="translate(920 340)">
+    <rect width="240" height="132" rx="14" fill="#f0f2f5" stroke="#d7dbe1"/>
+    <text x="24" y="44" fill="#4a4f58" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="700">Audit Trail</text>
+    <text x="24" y="86" fill="#171717" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="800">runs.json</text>
+  </g>
+
+  <text x="104" y="532" fill="#60646c" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="22">make demo  ->  http://127.0.0.1:18080</text>
+</svg>

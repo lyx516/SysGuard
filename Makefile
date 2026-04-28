@@ -1,4 +1,4 @@
-.PHONY: build run test clean deps fmt vet lint help
+.PHONY: build run test clean deps fmt vet lint demo help
 
 # Binary names
 BINARY_NAME=sysguard
@@ -52,6 +52,9 @@ run: build ## Build and run the binary
 
 run-ui: build ## Build and run the UI
 	$(BUILD_DIR)/$(UI_BINARY_NAME)
+
+demo: ## Start a local demo dashboard with a synthetic missing service
+	./scripts/demo-local.sh
 
 test: deps ## Run tests
 	$(GOTEST) -v -race -coverprofile=coverage.out ./...

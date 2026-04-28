@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Demo and setup guide
+    url: https://github.com/lyx516/SysGuard/blob/main/docs/demo.md
+    about: Try the local demo before reporting setup issues.
