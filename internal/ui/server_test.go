@@ -98,7 +98,7 @@ func TestServerExposesRunRecords(t *testing.T) {
 		t.Fatalf("new run store: %v", err)
 	}
 	state := orchestration.NewState(orchestration.TriggerManualCheck)
-	state.Branch = orchestration.BranchAlertOnly
+	state.Branch = orchestration.BranchAI
 	state.CompletedAt = state.StartedAt.Add(time.Second)
 	if err := store.Upsert(context.Background(), state, orchestration.RunStatusCompleted); err != nil {
 		t.Fatalf("upsert run: %v", err)

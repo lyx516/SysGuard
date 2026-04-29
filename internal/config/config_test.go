@@ -99,7 +99,6 @@ func TestLoadParsesAIConfigAndEnvKey(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `
 ai:
-  enabled: true
   provider: openai
   model: gpt-4.1-mini
   api_key_env: SYSGUARD_AI_API_KEY
@@ -117,9 +116,6 @@ ai:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if !cfg.AI.Enabled {
-		t.Fatal("expected AI config to be enabled")
-	}
 	if cfg.AI.Provider != "openai" {
 		t.Fatalf("provider = %q, want openai", cfg.AI.Provider)
 	}
@@ -151,7 +147,6 @@ func TestLoadParsesInlineAIAPIKey(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `
 ai:
-  enabled: true
   provider: openai
   model: Qwen/Qwen3.6-35B-A3B
   api_key: direct-secret

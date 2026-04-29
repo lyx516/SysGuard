@@ -10,7 +10,6 @@ scenarios:
     trigger:
       services:
         - sysguard-missing-service
-      ai_enabled: true
     expected:
       branch: ai
       required_tools:
@@ -22,17 +21,6 @@ scenarios:
         - diagnosis
         - verification
         - rollback
-
-  - id: service_down_alert_only
-    category: service
-    trigger:
-      services:
-        - sysguard-missing-service
-      ai_enabled: false
-    expected:
-      branch: alert_only
-      required_tools: []
-      history_written: true
 
   - id: repeated_anomaly_cooldown
     category: routing

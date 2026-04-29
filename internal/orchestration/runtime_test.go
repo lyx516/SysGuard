@@ -16,7 +16,6 @@ import (
 
 func TestRouteModeSuppressesRepeatedAnomalyWithinCooldown(t *testing.T) {
 	cfg := config.Default()
-	cfg.AI.Enabled = true
 	cfg.Orchestration.AnomalyCooldown = time.Minute
 	anomaly := monitor.Anomaly{
 		Source:      "monitor",
@@ -46,9 +45,8 @@ func TestRouteModeSuppressesRepeatedAnomalyWithinCooldown(t *testing.T) {
 	}
 }
 
-func TestRouteModeAlertOnlyWhenAIDisabled(t *testing.T) {
+func TestRouteModeAlwaysUsesAIForAnomalies(t *testing.T) {
 	cfg := config.Default()
-	cfg.AI.Enabled = false
 	cfg.Orchestration.AnomalyCooldown = time.Minute
 	runtime := &Runtime{cfg: cfg, lastHandled: map[string]time.Time{}}
 	state := NewState(TriggerManualCheck)
@@ -60,8 +58,8 @@ func TestRouteModeAlertOnlyWhenAIDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("routeMode() error = %v", err)
 	}
-	if next.Branch != BranchAlertOnly {
-		t.Fatalf("routeMode() branch = %s, want %s", next.Branch, BranchAlertOnly)
+	if next.Branch != BranchAI {
+		t.Fatalf("routeMode() branch = %s, want %s", next.Branch, BranchAI)
 	}
 }
 

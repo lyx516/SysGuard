@@ -75,10 +75,8 @@ func NewRuntime(
 		}
 		r.approvals = approvals
 	}
-	if cfg.AI.Enabled {
-		if _, err := syseino.NewChatModel(ctx, cfg.AI); err != nil {
-			return nil, err
-		}
+	if _, err := syseino.NewChatModel(ctx, cfg.AI); err != nil {
+		return nil, err
 	}
 	graph, err := r.buildGraph(ctx)
 	if err != nil {

@@ -8,6 +8,20 @@ PORT="${SYSGUARD_DEMO_PORT:-18080}"
 
 mkdir -p "${DEMO_DIR}" "${ROOT_DIR}/build"
 
+if [[ -z "${OPENAI_API_KEY:-}" && -z "${SYSGUARD_AI_API_KEY:-}" ]]; then
+  cat <<MSG
+SysGuard now always runs through the AI Agent path.
+
+Set an API key before starting the demo:
+  export OPENAI_API_KEY="your-api-key"
+
+Optional provider overrides:
+  export SYSGUARD_AI_MODEL="gpt-4.1-mini"
+  export SYSGUARD_AI_BASE_URL="https://api.openai.com/v1"
+MSG
+  exit 1
+fi
+
 cat >"${CONFIG_PATH}" <<YAML
 monitor:
   check_interval: 10s
@@ -21,9 +35,7 @@ orchestration:
   anomaly_cooldown: 5s
 
 execution:
-  auto_approve_safe_commands: true
   command_timeout: 30s
-  allow_interactive_input: false
   dry_run: true
   verify_after_remediation: true
 
@@ -51,7 +63,13 @@ ui:
   auth_token: ""
 
 ai:
-  enabled: false
+  provider: openai
+  model: \${SYSGUARD_AI_MODEL:-gpt-4.1-mini}
+  api_key_env: OPENAI_API_KEY
+  base_url: \${SYSGUARD_AI_BASE_URL:-https://api.openai.com/v1}
+  timeout: 30s
+  max_tokens: 2048
+  temperature: 0.2
 
 storage:
   history_path: "${DEMO_DIR}/history.json"

@@ -11,31 +11,18 @@ monitor:
   memory_threshold: 90.0
   disk_threshold: 90.0
 
-# 日志分析配置
-log_analysis:
-  chunk_size: 1000
-  keywords:
-    - error
-    - failed
-    - warning
-    - critical
-    - exception
-    - timeout
-
-# Eino graph 编排配置
+# Agent 编排配置
 orchestration:
   interval: 30s
   anomaly_cooldown: 30s
 
-# 工具执行配置
+# Agent 工具执行配置
 execution:
-  auto_approve_safe_commands: true
   command_timeout: 2m
-  allow_interactive_input: true
   dry_run: true
   verify_after_remediation: true
 
-# 安全配置
+# 工具安全配置
 security:
   dangerous_commands:
     - rm
@@ -52,7 +39,6 @@ security:
 # 知识库配置
 knowledge_base:
   docs_path: "./docs/sop"
-  reload_interval: 1h
 
 # 受管服务
 services:
@@ -61,17 +47,10 @@ services:
   #   - nginx
   #   - redis
 
-# 上下文管理配置
-context:
-  max_tokens: 8000
-  summary_threshold: 7000
-  keep_recent_messages: 5
-
 # 可观测性配置
 observability:
   enable_tracing: true
   trace_log_path: "./logs/trace.log"
-  enable_probes: true
 
 # UI 配置
 ui:
@@ -79,10 +58,9 @@ ui:
   # 生产环境建议通过环境变量注入
   auth_token: ""
 
-# AI 配置
+# AI Agent 配置
 # 推荐通过 api_key_env 指向的环境变量注入 API Key。
 ai:
-  enabled: false
   provider: openai
   model: gpt-4.1-mini
   api_key: ""
@@ -97,14 +75,6 @@ storage:
   history_path: "./data/history.json"
   runs_path: "./data/runs.json"
   approvals_path: "./data/approvals.json"
-
-# 容错配置
-fault_tolerance:
-  enable_retry: true
-  max_retry_attempts: 3
-  retry_delay: 1s
-  enable_circuit_breaker: true
-  circuit_breaker_threshold: 5
 
 # 日志配置
 logging:

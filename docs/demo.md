@@ -4,7 +4,7 @@ This demo is designed for first-time visitors who want to see SysGuard fail safe
 
 It starts the Dashboard with:
 
-- AI disabled
+- AI Agent enabled
 - remediation dry-run enabled
 - approval enabled
 - one synthetic missing service named `sysguard-demo-missing-service`
@@ -26,7 +26,7 @@ Click `立即巡检`.
 ## What To Look For
 
 - The system health score should drop because the configured service is missing.
-- The graph run should take the `alert_only` branch when AI is disabled.
+- The graph run should take the `ai` branch and record the Agent outcome.
 - The run should appear in the `运行记录` view.
 - Runtime artifacts are written under `.demo/`.
 
@@ -51,7 +51,7 @@ security:
   enable_approval: true
 ```
 
-Then call a state-changing service tool through an AI-enabled run or a focused integration test. SysGuard will create a pending approval request instead of executing the command directly.
+Then call a state-changing service tool through an Agent run or a focused integration test. SysGuard will create a pending approval request instead of executing the command directly.
 
 Approval API:
 

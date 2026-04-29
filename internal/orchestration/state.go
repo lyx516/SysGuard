@@ -22,7 +22,6 @@ const (
 	BranchUnknown    Branch = "unknown"
 	BranchHealthy    Branch = "healthy"
 	BranchSuppressed Branch = "suppressed"
-	BranchAlertOnly  Branch = "alert_only"
 	BranchAI         Branch = "ai"
 )
 

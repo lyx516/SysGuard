@@ -19,10 +19,6 @@ func (r *Runtime) routeMode(ctx context.Context, state *State) (*State, error) {
 		state.SuppressionReason = "cooldown_active"
 		return state, nil
 	}
-	if !r.cfg.AI.Enabled {
-		state.Branch = BranchAlertOnly
-		return state, nil
-	}
 	state.Branch = BranchAI
 	return state, nil
 }

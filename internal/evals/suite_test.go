@@ -28,7 +28,6 @@ import (
 
 var requiredScenarioIDs = []string{
 	"service_down_ai_path",
-	"service_down_alert_only",
 	"repeated_anomaly_cooldown",
 	"disk_full",
 	"cpu_high",
@@ -175,7 +174,6 @@ func TestLiveLLMReplayEvaluation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load local private config: %v", err)
 	}
-	cfg.AI.Enabled = true
 	cfg.Execution.DryRun = true
 	if cfg.AI.Timeout <= 0 {
 		cfg.AI.Timeout = 45 * time.Second
@@ -227,9 +225,6 @@ func TestConfigExampleIsSafeAndLoadable(t *testing.T) {
 	cfg, err := config.Load(projectPath("configs/config.example.yaml"))
 	if err != nil {
 		t.Fatalf("load config example: %v", err)
-	}
-	if cfg.AI.Enabled {
-		t.Fatalf("example config should keep AI disabled by default")
 	}
 	if strings.TrimSpace(cfg.AI.APIKey) != "" {
 		t.Fatalf("example config should not contain an API key")
@@ -634,9 +629,6 @@ func simulateBranch(scenario agentScenario) string {
 	}
 	if boolTrigger(scenario, "healthy") {
 		return "healthy"
-	}
-	if !boolTrigger(scenario, "ai_enabled") {
-		return "alert_only"
 	}
 	return "ai"
 }

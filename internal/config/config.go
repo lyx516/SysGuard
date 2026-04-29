@@ -38,8 +38,6 @@ type OrchestrationConfig struct {
 
 type ExecutionConfig struct {
 	CommandTimeout         time.Duration
-	AutoApproveSafe        bool
-	AllowInteractiveInput  bool
 	DryRun                 bool
 	VerifyAfterRemediation bool
 }
@@ -72,7 +70,6 @@ type UIConfig struct {
 }
 
 type AIConfig struct {
-	Enabled     bool
 	Provider    string
 	Model       string
 	APIKeyEnv   string
@@ -103,8 +100,6 @@ func Default() *Config {
 		},
 		Execution: ExecutionConfig{
 			CommandTimeout:         2 * time.Minute,
-			AutoApproveSafe:        true,
-			AllowInteractiveInput:  true,
 			DryRun:                 true,
 			VerifyAfterRemediation: true,
 		},
@@ -130,7 +125,6 @@ func Default() *Config {
 			Addr: "127.0.0.1:8080",
 		},
 		AI: AIConfig{
-			Enabled:     false,
 			Provider:    "openai",
 			Model:       "gpt-4.1-mini",
 			APIKeyEnv:   "OPENAI_API_KEY",
@@ -229,12 +223,6 @@ func Load(path string) (*Config, error) {
 	if v := values["execution.command_timeout"]; v != "" {
 		cfg.Execution.CommandTimeout = parseDuration(v, cfg.Execution.CommandTimeout)
 	}
-	if v := values["execution.auto_approve_safe_commands"]; v != "" {
-		cfg.Execution.AutoApproveSafe = parseBool(v, cfg.Execution.AutoApproveSafe)
-	}
-	if v := values["execution.allow_interactive_input"]; v != "" {
-		cfg.Execution.AllowInteractiveInput = parseBool(v, cfg.Execution.AllowInteractiveInput)
-	}
 	if v := values["execution.dry_run"]; v != "" {
 		cfg.Execution.DryRun = parseBool(v, cfg.Execution.DryRun)
 	}
@@ -273,9 +261,6 @@ func Load(path string) (*Config, error) {
 	}
 	if v := values["ui.auth_token"]; v != "" {
 		cfg.UI.AuthToken = v
-	}
-	if v := values["ai.enabled"]; v != "" {
-		cfg.AI.Enabled = parseBool(v, cfg.AI.Enabled)
 	}
 	if v := values["ai.provider"]; v != "" {
 		cfg.AI.Provider = v
@@ -366,9 +351,6 @@ func applyEnv(cfg *Config) {
 	}
 	if token := strings.TrimSpace(os.Getenv("SYSGUARD_UI_AUTH_TOKEN")); token != "" {
 		cfg.UI.AuthToken = token
-	}
-	if enabled := strings.TrimSpace(os.Getenv("SYSGUARD_AI_ENABLED")); enabled != "" {
-		cfg.AI.Enabled = parseBool(enabled, cfg.AI.Enabled)
 	}
 	if provider := strings.TrimSpace(os.Getenv("SYSGUARD_AI_PROVIDER")); provider != "" {
 		cfg.AI.Provider = provider

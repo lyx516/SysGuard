@@ -24,7 +24,7 @@ func TestRunStorePersistsAndReloadsLatestRunRecords(t *testing.T) {
 	if err := store.Upsert(context.Background(), state, RunStatusRunning); err != nil {
 		t.Fatalf("upsert running: %v", err)
 	}
-	state.Branch = BranchAlertOnly
+	state.Branch = BranchAI
 	state.CompletedAt = state.StartedAt.Add(150 * time.Millisecond)
 	state.Persistence.HistoryWritten = true
 	if err := store.Upsert(context.Background(), state, RunStatusCompleted); err != nil {
@@ -43,7 +43,7 @@ func TestRunStorePersistsAndReloadsLatestRunRecords(t *testing.T) {
 		t.Fatalf("records = %d, want 1", len(records))
 	}
 	record := records[0]
-	if record.RunID != state.RunID || record.Status != RunStatusCompleted || record.Branch != BranchAlertOnly {
+	if record.RunID != state.RunID || record.Status != RunStatusCompleted || record.Branch != BranchAI {
 		t.Fatalf("unexpected record: %#v", record)
 	}
 	if record.Anomaly != "nginx down" || record.Severity != "critical" || record.DurationMillis != 150 {
